@@ -1,0 +1,20 @@
+# Runtime deps (kept in sync with pyproject.toml [project.dependencies]).
+fastapi>=0.115
+uvicorn[standard]>=0.32
+sqlmodel>=0.0.22
+aiosqlite>=0.20
+greenlet>=3.1
+pydantic-settings>=2.6
+litellm>=1.55
+argon2-cffi>=23.1
+pyjwt>=2.10
+httpx>=0.28
+structlog>=24.4
+apscheduler>=3.10
+python-multipart>=0.0.12
+mcp>=1.1
+alembic>=1.13
+pillow>=10.2
+numpy>=1.26
+pypdf>=5.0
+beautifulsoup4>=4.12

@@ -1,0 +1,195 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme {
+  --color-bg: var(--bg);
+  --color-bg-alt: var(--bg-alt);
+  --color-bg-elev: var(--bg-elev);
+  --color-border: var(--border);
+  --color-border-soft: var(--border-soft);
+  --color-ring: var(--ring);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-danger: var(--danger);
+  --color-danger-subtle: var(--danger-subtle-bg);
+  --color-danger-subtle-fg: var(--danger-subtle-fg);
+  --color-success: var(--success);
+  --color-warn: var(--warn);
+  --color-warn-subtle: var(--warn-subtle-bg);
+  --color-warn-subtle-fg: var(--warn-subtle-fg);
+  --color-orchestra: var(--orchestra);
+  --color-user-bubble: var(--user-bubble);
+  --color-tool-bubble: var(--tool-bubble);
+  --color-code-bg: var(--code-bg);
+  --color-code-fg: var(--code-fg);
+  --color-diff-add: var(--diff-add);
+  --color-diff-add-bg: var(--diff-add-bg);
+  --color-diff-del: var(--diff-del);
+  --color-diff-del-bg: var(--diff-del-bg);
+
+  /* Chart series — categorical identity only (kind breakdown, eval metrics).
+     Never reused for status; validated with the dataviz skill's palette
+     checker (CVD-safe adjacent pairs in both themes). */
+  --color-series-1: var(--series-1);
+  --color-series-2: var(--series-2);
+  --color-series-3: var(--series-3);
+  --color-series-4: var(--series-4);
+  --color-chart-grid: var(--chart-grid);
+
+  --radius-md: var(--radius);
+
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
+  --font-mono: var(--font-mono);
+
+  /* Two extra small-text steps — consolidate the ad-hoc 0.7/0.72/0.78/0.8/
+     0.82/0.85rem literals that used to be hand-typed at each call site into
+     two real scale steps (SPEC-adjacent audit, Phase 1). */
+  --text-3xs: 0.6875rem;
+  --text-3xs--line-height: 1.4;
+  --text-2xs: 0.8125rem;
+  --text-2xs--line-height: 1.5;
+}
+
+:root {
+  --bg: #f7f9fa;
+  --bg-alt: #eef1f3;
+  --bg-elev: #ffffff;
+  --border: #d8e0e5;
+  --border-soft: #e7edf0;
+  --ring: var(--accent);
+  --text: #0e171c;
+  --muted: #57696f;
+  --faint: #7e9199;
+
+  /* signal — interaction only (primary button, link, focus ring, tab-active).
+     Never reused for a state — that's what success/warn/danger/orchestra are for. */
+  --accent: #0b62c4;
+  --accent-fg: #ffffff;
+
+  /* ok — health/completion (connected, resolved, eval passed) */
+  --success: #1a7f37;
+
+  /* caution — reversible-but-notable actions (write/edit file, budget near cap) */
+  --warn: #8a6100;
+  --warn-subtle-bg: #fbf1dc;
+  --warn-subtle-fg: #6b4a00;
+
+  /* risk — irreversible / trust-critical (execute_code, delete_file, denied, provider error) */
+  --danger: #c33c31;
+  --danger-subtle-bg: #fbeae8;
+  --danger-subtle-fg: #7a271a;
+
+  /* orchestration layer only — sub-agent tree, pattern trace, route decisions */
+  --orchestra: #6d42c9;
+
+  --user-bubble: #eaf1fb;
+  --tool-bubble: #f1edfa;
+  /* Terminal-style surface for code/diff blocks — deliberately the same in both
+     themes (a code block reads better as a fixed dark surface than one that
+     flips to near-white in light mode). */
+  --code-bg: #0d1117;
+  --code-fg: #e6edf3;
+  --diff-add: #2ea043;
+  --diff-add-bg: rgb(46 160 67 / 25%);
+  --diff-del: #f85149;
+  --diff-del-bg: rgb(248 81 73 / 25%);
+
+  /* Categorical chart series — slot 1 reuses --accent (the dominant category,
+     "chat", is also the app's primary color); 2-4 borrow validated hues from
+     the dataviz skill's default palette rather than inventing untested ones. */
+  --series-1: var(--accent);
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --chart-grid: var(--border-soft);
+
+  --radius: 10px;
+
+  --font-body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-display: "IBM Plex Sans Condensed", "IBM Plex Sans", -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  font-family: var(--font-body);
+}
+:root[data-theme="dark"] {
+  --bg: #10171b;
+  --bg-alt: #172126;
+  --bg-elev: #1d2830;
+  --border: #2b3a41;
+  --border-soft: #222e34;
+  --text: #dce6ea;
+  --muted: #86999f;
+  --faint: #5c6e74;
+
+  --accent: #4da6ff;
+  --accent-fg: #06121f;
+
+  --success: #3fb950;
+
+  --warn: #d9a02b;
+  --warn-subtle-bg: #3a2e13;
+  --warn-subtle-fg: #f0d9a6;
+
+  --danger: #f0685e;
+  --danger-subtle-bg: #3a1f1d;
+  --danger-subtle-fg: #f3b6b3;
+
+  --orchestra: #a78bfa;
+
+  --user-bubble: #223244;
+  --tool-bubble: #2c2740;
+
+  /* --accent's dark value (#4da6ff) is deliberately light for on-screen
+     buttons/links, but that lightness fails the categorical chart band
+     (validated via the dataviz skill's checker) — charts get their own
+     slightly darker blue instead of inheriting --accent here. */
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font-body); }
+button { cursor: pointer; }
+h1, h2, h3, h4 { font-family: var(--font-display); }
+code { font-family: var(--font-mono); font-size: 0.9em; }
+
+/* Consistent on-brand focus ring for keyboard/programmatic focus everywhere.
+   Only targets :focus-visible (not mouse clicks), and only sets `outline` —
+   so it never fights a component's own background/border like the old global
+   button/input reset did. Wrapped in Tailwind's `base` layer (unlike the rest
+   of this file, which is unlayered) specifically so Input/Textarea's own
+   `focus-visible:outline-none` utility — which lives in the higher-priority
+   `utilities` layer — wins on those elements instead of doubling up. */
+@layer base {
+  button:focus-visible,
+  a:focus-visible,
+  [role="button"]:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+/* Respect the OS-level motion preference everywhere at once — spinners
+   (animate-spin/animate-pulse on tool events, SubAgentTrace's running dot),
+   sidebar/panel slide transitions, hover-reveal fades. A loading spinner
+   still needs to communicate "in progress" without motion, so this collapses
+   the animation to a single instant frame rather than removing the class
+   that drives it (e.g. a spinner's border stays visibly asymmetric). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

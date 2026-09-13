@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Env / secrets
+.env
+*/.env
+!*/.env.example
+
+# Data
+backend/data/
+sandbox/workspaces/*
+!sandbox/workspaces/.gitkeep
+
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+
+# Test output (playwright.config.ts writes playwright-report/)
+e2e-screenshots
+playwright-report/
+test-results/
+blob-report/
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.log
+
+# Claude Code — per-machine settings; .claude/settings.json stays tracked
+.claude/settings.local.json
+
+PLAN.md
+SPEC.md
+TESTPLAN.md
+KNOWLEDGE.md

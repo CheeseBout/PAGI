@@ -1,0 +1,73 @@
+# PAGI — full stack. Run from repo root:  docker compose -f docker/docker-compose.yml up -d --build
+# Build the ephemeral exec image once:
+#   docker build -t pagi-sandbox:latest -f sandbox/images/Dockerfile.sandbox sandbox/images
+
+services:
+  backend:
+    build:
+      context: ../backend
+    env_file:
+      - ../backend/.env
+    environment:
+      SANDBOX_URL: http://sandbox:8000
+      CORS_ORIGINS: http://localhost:8080
+    volumes:
+      - backend-data:/app/data
+    depends_on:
+      - sandbox
+    networks:
+      - web
+      - sandbox-net
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ../frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    networks:
+      - web
+    restart: unless-stopped
+
+  sandbox:
+    build:
+      context: ../sandbox
+    env_file:
+      - ../sandbox/.env
+    volumes:
+      - sandbox-workspaces:/workspaces
+      # Needed only for real container isolation. This grants root-equivalent
+      # access to the host — see README "Security". Comment out to use the
+      # (unsafe) subprocess fallback instead.
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - sandbox-net
+    restart: unless-stopped
+    # On startup this service auto-creates its own `pagi-exec` Docker network
+    # for ephemeral exec containers and (Linux hosts only) installs an iptables
+    # egress filter on it — nothing to declare here. See sandbox/network_guard.py
+    # and README "Security" / GET /health -> egress_filter.
+
+  # Optional: uncomment to use Postgres instead of SQLite.
+  # postgres:
+  #   image: postgres:16-alpine
+  #   environment:
+  #     POSTGRES_USER: pagi
+  #     POSTGRES_PASSWORD: pagi
+  #     POSTGRES_DB: pagi
+  #   volumes:
+  #     - pg-data:/var/lib/postgresql/data
+  #   networks:
+  #     - web
+
+networks:
+  web:
+  sandbox-net:
+    internal: true
+
+volumes:
+  backend-data:
+  sandbox-workspaces:
+  # pg-data:

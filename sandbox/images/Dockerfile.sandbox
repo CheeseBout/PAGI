@@ -1,0 +1,18 @@
+# Image used for the *ephemeral* per-execution containers (SPEC §6.1).
+# Build:  docker build -t pagi-sandbox:latest -f images/Dockerfile.sandbox images
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl ca-certificates bash ripgrep nodejs npm \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir requests
+
+# Non-root; code runs against the mounted /workspace volume.
+RUN useradd -m -u 10001 sandbox
+USER sandbox
+WORKDIR /workspace
+
+CMD ["python", "-c", "print('pagi-sandbox image ok')"]
