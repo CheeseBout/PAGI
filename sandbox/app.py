@@ -102,6 +102,11 @@ class SearchBody(BaseModel):
     limit: int = 200
 
 
+class CloneBody(BaseModel):
+    from_session_id: str
+    to_session_id: str
+
+
 # ── routes ─────────────────────────────────────────────────────────────
 @app.post("/execute", dependencies=[Depends(require_token)])
 def execute(body: ExecuteBody):
@@ -186,6 +191,15 @@ def files_search(body: SearchBody):
         return fs_ops.search_files(
             body.session_id, body.pattern, body.path, body.regex, body.offset, body.limit
         )
+    except fs_ops.InvalidPath as exc:
+        raise _bad_path(exc)
+
+
+@app.post("/workspace/clone", dependencies=[Depends(require_token)])
+def workspace_clone(body: CloneBody):
+    """Phase 18: mirror one workspace into another (QA's isolated checkout)."""
+    try:
+        return fs_ops.clone_workspace(body.from_session_id, body.to_session_id)
     except fs_ops.InvalidPath as exc:
         raise _bad_path(exc)
 

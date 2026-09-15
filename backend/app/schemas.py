@@ -108,6 +108,9 @@ class AgentEvalCaseIn(BaseModel):
     expected_outcome: str | None = None
     optimal_steps: int | None = None
     forbidden_tools: list[str] = Field(default_factory=list)
+    # held out of Weakness Miner's input pool (Phase 17) — a fair regression
+    # check needs cases the miner never saw.
+    held_out: bool = False
 
 
 class AgentEvalRunCreate(BaseModel):
@@ -167,3 +170,20 @@ class CronJobPatch(BaseModel):
     prompt: str | None = None
     unattended_allowed_tools: list[str] | None = None
     enabled: bool | None = None
+
+
+# ── Multi-day project development loop (Phase 18) ─────────────────────
+class ProjectRunCreate(BaseModel):
+    name: str
+    planner_agent_id: str
+    developer_agent_id: str
+    qa_agent_id: str
+    max_iterations: int = Field(default=10, ge=1, le=1000)
+    budget_usd: float = Field(default=0.0, ge=0)
+    schedule: str | None = None  # cron expr; None = manual-trigger-only
+
+
+class ProjectRunPatch(BaseModel):
+    max_iterations: int | None = Field(default=None, ge=1, le=1000)
+    budget_usd: float | None = Field(default=None, ge=0)
+    schedule: str | None = None

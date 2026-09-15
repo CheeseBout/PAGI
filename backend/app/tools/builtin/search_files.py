@@ -9,7 +9,7 @@ async def _handler(ctx: ToolContext, args: dict) -> dict:
     if not pattern:
         return {"error": "pattern is required"}
     payload = {
-        "session_id": ctx.session_id,
+        "session_id": ctx.workspace_id,
         "pattern": pattern,
         "regex": bool(args.get("regex", False)),
         "offset": int(args.get("offset") or 0),

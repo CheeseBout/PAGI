@@ -17,7 +17,7 @@ async def _handler(ctx: ToolContext, args: dict) -> dict:
     try:
         return await call(
             "/files/write",
-            {"session_id": ctx.session_id, "path": path, "content": content, "mode": mode},
+            {"session_id": ctx.workspace_id, "path": path, "content": content, "mode": mode},
         )
     except SandboxError as exc:
         return {"error": str(exc)}

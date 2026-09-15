@@ -29,6 +29,13 @@ class ToolContext:
     agent_id: str | None = None
     tools_allowed: list[str] = field(default_factory=list)
     depth: int = 0
+    # sandbox directory key for THIS turn (Phase 18, PLAN §18) — equal to
+    # session_id unless the session has a `workspace_id` override, in which
+    # case several sessions (e.g. Planner/Developer/QA) share one persistent
+    # sandbox workspace. Only the sandbox-backed tool handlers use this; other
+    # uses of ctx.session_id (rag_search logging, delegate_task bookkeeping)
+    # must keep using the real session_id.
+    workspace_id: str = ""
 
 
 @dataclass

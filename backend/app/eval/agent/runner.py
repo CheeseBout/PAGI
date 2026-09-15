@@ -164,6 +164,16 @@ async def run(run_id: str, *, judge: Judge | None = None) -> None:
         await db.commit()
     log.info("agent_eval_run_done", run_id=run_id, cases=len(cases))
 
+    # Phase 17 — opt-in autopilot: mine/propose/validate a harness patch off
+    # the back of this run. Off by default (HARNESS_AUTO_RUN_ON_EVAL); always
+    # available on demand via POST /api/agent-eval/runs/{id}/harness/run.
+    from ...config import get_settings as _get_settings
+
+    if _get_settings().harness_auto_run_on_eval:
+        from ...harness import schedule as _schedule_harness
+
+        _schedule_harness(run_id)
+
 
 def _as_bool(v):
     if v is None:

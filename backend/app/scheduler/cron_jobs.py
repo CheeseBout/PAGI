@@ -117,12 +117,23 @@ async def run_cron_job(job_id: str) -> None:
         job = await db.get(CronJob, job_id)
         if job is None or not job.enabled:
             return
-        owner = (await db.exec(select(User).order_by(User.created_at))).first()
-        if owner is None:
-            log.warning("cron_no_user", job_id=job_id)
-            return
-        session_id = await _seed_session(db, job, owner.id)
-        allowed = list(job.unattended_allowed_tools or [])
+        if job.kind == "project_iteration":
+            project_run_id = job.project_run_id
+        else:
+            project_run_id = None
+            owner = (await db.exec(select(User).order_by(User.created_at))).first()
+            if owner is None:
+                log.warning("cron_no_user", job_id=job_id)
+                return
+            session_id = await _seed_session(db, job, owner.id)
+            allowed = list(job.unattended_allowed_tools or [])
+
+    if project_run_id is not None:
+        log.info("cron_run_project_iteration", job_id=job_id, project_run_id=project_run_id)
+        from ..core.orchestration import project_dev
+
+        await project_dev.run_iteration(project_run_id)
+        return
 
     log.info("cron_run", job_id=job_id, session_id=session_id)
     await run_turn(
@@ -133,15 +144,25 @@ async def run_cron_job(job_id: str) -> None:
     )
 
 
-async def trigger_now(job_id: str, user_id: str) -> str:
+async def trigger_now(job_id: str, user_id: str) -> str | None:
     async with SessionLocal() as db:
         job = await db.get(CronJob, job_id)
         if job is None:
             raise KeyError(job_id)
-        session_id = await _seed_session(db, job, user_id)
-        allowed = list(job.unattended_allowed_tools or [])
+        if job.kind == "project_iteration":
+            project_run_id = job.project_run_id
+        else:
+            project_run_id = None
+            session_id = await _seed_session(db, job, user_id)
+            allowed = list(job.unattended_allowed_tools or [])
 
     import asyncio
+
+    if project_run_id is not None:
+        from ..core.orchestration import project_dev
+
+        asyncio.create_task(project_dev.run_iteration(project_run_id))
+        return None
 
     asyncio.create_task(
         run_turn(

@@ -7,6 +7,7 @@ import EvalTab from "../components/settings/EvalTab";
 import KnowledgeTab from "../components/settings/KnowledgeTab";
 import McpTab from "../components/settings/McpTab";
 import PlaygroundTab from "../components/settings/PlaygroundTab";
+import ProjectsTab from "../components/settings/ProjectsTab";
 import UsageTab from "../components/settings/UsageTab";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +19,7 @@ type TabKey =
   | "agent-eval"
   | "cron"
   | "mcp"
+  | "projects"
   | "usage";
 
 const TAB_LABEL: Record<TabKey, string> = {
@@ -28,14 +30,18 @@ const TAB_LABEL: Record<TabKey, string> = {
   "agent-eval": "Agent eval",
   cron: "Cron jobs",
   mcp: "MCP servers",
+  projects: "Projects",
   usage: "Usage",
 };
 
 // Three groups by *intent*, not by feature area — the old flat 8-tab row mixed
 // "configure a thing", "watch what happened", and "try an idea before
 // committing to it" as if they were the same kind of task (SPEC audit finding).
+// "Automation" (Phase 18) is its own group — a project run is neither a
+// static config nor a one-off experiment, it's a standing background job.
 const GROUPS: { label: string; tabs: TabKey[] }[] = [
   { label: "Configuration", tabs: ["agents", "knowledge", "mcp", "cron"] },
+  { label: "Automation", tabs: ["projects"] },
   { label: "Observability", tabs: ["usage"] },
   { label: "Experimentation", tabs: ["playground", "eval", "agent-eval"] },
 ];
@@ -91,6 +97,7 @@ export default function Settings() {
           {tab === "agent-eval" && <AgentEvalTab />}
           {tab === "cron" && <CronTab />}
           {tab === "mcp" && <McpTab />}
+          {tab === "projects" && <ProjectsTab />}
           {tab === "usage" && <UsageTab />}
         </div>
       </div>

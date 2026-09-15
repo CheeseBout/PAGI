@@ -133,8 +133,10 @@ from .api import (  # noqa: E402
     routes_conversations,
     routes_cron,
     routes_files,
+    routes_harness,
     routes_mcp,
     routes_meta,
+    routes_projects,
     routes_rag,
     routes_workspace,
 )
@@ -151,6 +153,8 @@ for module in (
     routes_rag,
     routes_meta,
     routes_agent_eval,
+    routes_harness,
+    routes_projects,
     routes_admin,
     routes_chat,
 ):

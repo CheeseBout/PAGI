@@ -282,6 +282,7 @@ async def run_turn(
             wait_for_approval=wait_for_approval, mode=mode,
             unattended_allowed_tools=list(unattended_allowed_tools or []),
             agent_id=agent.id, tools_allowed=list(agent.tools_allowed or []),
+            workspace_id=getattr(chat, "workspace_id", None) or session_id,
             depth=getattr(chat, "depth", 0) or 0,
         )
 

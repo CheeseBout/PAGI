@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import JSON, Column
+from sqlalchemy import JSON, Column, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -93,6 +93,12 @@ class ChatSession(SQLModel, table=True):
     # of spawning a second tree (SPEC §15.5).
     spawned_by_tool_call_id: str | None = Field(default=None, max_length=64, unique=True)
     delegated_task: str | None = Field(default=None)
+    # ── project workspace override (Phase 18, PLAN §18) ──────────────
+    # when set, sandbox tool calls address THIS id's directory instead of the
+    # session's own id — lets several sessions (Planner/Developer/QA) share one
+    # persistent workspace. None everywhere outside Phase 18 (default behaviour
+    # unchanged: a session's own sandbox workspace is keyed by its own id).
+    workspace_id: str | None = Field(default=None, max_length=64)
 
 
 class Message(SQLModel, table=True):
@@ -188,6 +194,12 @@ class CronJob(SQLModel, table=True):
     last_run_at: datetime | None = Field(default=None)
     next_run_at: datetime | None = Field(default=None)
     created_at: datetime = Field(default_factory=_now)
+    # ── project iteration jobs (Phase 18, PLAN §18c) ─────────────────
+    # "prompt" (default, existing behaviour) | "project_iteration" — the latter
+    # ignores `prompt` and calls project_dev.run_iteration(project_run_id)
+    # instead of seeding a fresh session from `prompt`.
+    kind: str = Field(default="prompt", max_length=24)
+    project_run_id: str | None = Field(default=None, foreign_key="project_runs.id")
 
 
 class Trace(SQLModel, table=True):
@@ -398,3 +410,136 @@ class AgentEvalCase(SQLModel, table=True):
     cost_usd: float | None = Field(default=None)
     latency_ms: int | None = Field(default=None)
     judge_rationale: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    # held out of Weakness Miner's failure pool (Phase 17) — scored like any
+    # other case, but never used to detect a weakness, so it's a fair check
+    # that a proposed patch didn't just overfit the cases that flagged it.
+    held_out: bool = Field(default=False)
+
+
+# ── Self-improving harness (Phase 17, PLAN §17) ─────────────────────────
+class WeaknessReport(SQLModel, table=True):
+    """One recurring failure pattern mined from one agent's own eval history.
+
+    Groups several failing ``agent_eval_cases`` (same agent, same eval run,
+    ``held_out=False``) into a single human-readable pattern instead of one
+    report per case — the input to Harness Proposal.
+    """
+
+    __tablename__ = "weakness_reports"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    agent_id: str = Field(foreign_key="agents.id", index=True)
+    agent_eval_run_id: str = Field(foreign_key="agent_eval_runs.id")
+    pattern: str = Field(default="")
+    example_case_ids: list = Field(default_factory=list, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=_now)
+
+
+class AgentConfigVersion(SQLModel, table=True):
+    """One candidate (or historical) patch to an agent's harness config.
+
+    ``diff`` is the minimal ``{field: new_value}`` patch this version applies
+    on top of its parent (exactly one of ``system_prompt``/``tools_allowed``/
+    ``tool_policy``/``orchestration``) — kept for audit/display. ``config_snapshot``
+    is the *full* 4-field state at this version, so rollback to any row in the
+    chain doesn't require replaying every diff since the root. ``agents`` is
+    only ever written from two places: the regression gate (17c) turning a
+    ``proposed`` row ``active``, or an explicit rollback — never directly from
+    a Harness Proposal (PLAN §2 principle 13).
+    """
+
+    __tablename__ = "agent_config_versions"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    agent_id: str = Field(foreign_key="agents.id", index=True)
+    parent_version_id: str | None = Field(default=None, foreign_key="agent_config_versions.id")
+    weakness_report_id: str | None = Field(default=None, foreign_key="weakness_reports.id")
+    diff: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    config_snapshot: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    rationale: str = Field(default="")
+    source_eval_run_id: str | None = Field(default=None, foreign_key="agent_eval_runs.id")
+    # proposed | rejected | active | superseded
+    status: str = Field(default="proposed", max_length=16)
+    held_in_score: float | None = Field(default=None)
+    held_out_score: float | None = Field(default=None)
+    reject_reason: str | None = Field(default=None)
+    created_at: datetime = Field(default_factory=_now)
+    activated_at: datetime | None = Field(default=None)
+
+
+# ── Multi-day project development loop (Phase 18, PLAN §18) ─────────────
+class ProjectRun(SQLModel, table=True):
+    """One long-running "build this project" loop (PLAN §18).
+
+    Each iteration is Planner -> Developer -> QA, three independent
+    ``delegate_task``-style calls (``core/delegation.py::run_delegated``)
+    against ``root_session_id``, sharing one sandbox workspace
+    (``workspace_path``, addressed via ``ChatSession.workspace_id`` — see
+    core/orchestration/project_dev.py) that accumulates one git commit per
+    iteration. ``planner_agent_id``/``developer_agent_id``/``qa_agent_id`` are
+    not in the original PLAN §6 table — there is no LLM "conductor" deciding
+    which named agent to delegate to each iteration (project_dev.run_iteration
+    is a plain function, not a chat Strategy), so the three roles must be
+    fixed config on the row.
+    """
+    # NOTE: root_session_id's own agent is a dedicated internal "driver" agent
+    # (created alongside the row, tools_allowed mirroring the developer's) —
+    # never one of the three role agents themselves, since a role's own
+    # delegate call would then be rejected as self-delegation.
+
+    __tablename__ = "project_runs"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    name: str = Field(default="", max_length=128)
+    planner_agent_id: str = Field(foreign_key="agents.id")
+    developer_agent_id: str = Field(foreign_key="agents.id")
+    qa_agent_id: str = Field(foreign_key="agents.id")
+    # anchors the delegation tree (parent_session_id/depth/tool-intersection
+    # bookkeeping in run_delegated) — its agent_id is a dedicated internal
+    # "driver" agent (see the class docstring), never one of the three role
+    # agents; it never runs a turn itself.
+    root_session_id: str = Field(foreign_key="sessions.id")
+    # a workspace *identifier* (== this row's id in practice), not a literal
+    # filesystem path — same sense a chat session_id already is one.
+    workspace_path: str = Field(default="", max_length=64)
+    status: str = Field(default="active", max_length=16)  # active | paused | done
+    max_iterations: int = Field(default=10)
+    iterations_done: int = Field(default=0)
+    budget_usd: float = Field(default=0.0)  # 0 = off
+    spent_usd: float = Field(default=0.0)
+    qa_fail_streak: int = Field(default=0)
+    qa_fail_pause_threshold: int = Field(default=3)
+    schedule: str | None = Field(default=None, max_length=64)  # cron expr; None = manual only
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+
+
+class ProjectIteration(SQLModel, table=True):
+    """One Planner -> Developer -> QA round of a ``ProjectRun`` (PLAN §18b).
+
+    ``status`` and the unique ``(project_run_id, iteration_no)`` pairing are
+    not in PLAN §6's literal column list — needed so a crashed/errored
+    iteration is safely retried by the next cron firing without double
+    counting toward ``iterations_done`` or spawning a duplicate iteration
+    (the three ``delegate_task`` calls are already individually idempotent
+    via ``spawned_by_tool_call_id``; this is the same property one level up).
+    """
+
+    __tablename__ = "project_iterations"
+    __table_args__ = (UniqueConstraint("project_run_id", "iteration_no", name="uq_project_iteration_no"),)
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    project_run_id: str = Field(foreign_key="project_runs.id", index=True)
+    iteration_no: int = Field(default=1)
+    planner_session_id: str | None = Field(default=None, foreign_key="sessions.id")
+    developer_session_id: str | None = Field(default=None, foreign_key="sessions.id")
+    qa_session_id: str | None = Field(default=None, foreign_key="sessions.id")
+    workspace_commit_sha: str | None = Field(default=None, max_length=64)
+    qa_verdict: str | None = Field(default=None, max_length=8)  # pass | fail
+    qa_reason: str | None = Field(default=None)
+    cost_usd: float = Field(default=0.0)
+    # running | done | qa_failed | error
+    status: str = Field(default="running", max_length=16)
+    error: str | None = Field(default=None)
+    created_at: datetime = Field(default_factory=_now)
+    finished_at: datetime | None = Field(default=None)

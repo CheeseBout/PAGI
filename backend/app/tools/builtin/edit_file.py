@@ -17,7 +17,7 @@ async def _handler(ctx: ToolContext, args: dict) -> dict:
         return await call(
             "/files/edit",
             {
-                "session_id": ctx.session_id,
+                "session_id": ctx.workspace_id,
                 "path": path,
                 "find": find,
                 "replace": replace,

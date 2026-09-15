@@ -23,6 +23,7 @@ const BLANK_CASE: AgentEvalCaseInput = {
   expected_outcome: "",
   optimal_steps: null,
   forbidden_tools: [],
+  held_out: false,
 };
 
 function pct(v: number | null): string {
@@ -152,7 +153,10 @@ export default function AgentEvalTab() {
           </label>
         </div>
         <label className="flex flex-col gap-1 text-2xs text-muted">
-          Cases (JSON — {"{ prompt, expected_outcome?, optimal_steps?, forbidden_tools? }"})
+          Cases (JSON — {"{ prompt, expected_outcome?, optimal_steps?, forbidden_tools?, held_out? }"}
+          ). Mark a case <code>held_out: true</code> to keep it out of the Phase 17 Weakness
+          Miner's input pool — needed for a fair regression check in the agent's Harness
+          History.
           <Textarea
             rows={8}
             className="font-mono text-xs"
@@ -256,6 +260,7 @@ export default function AgentEvalTab() {
                 {c.resolved ? "resolved" : "unresolved"} · {c.steps_taken} steps ·{" "}
                 {c.redundant_tool_calls} redundant · {c.llm_calls} LLM calls ·{" "}
                 {c.cost_usd == null ? "—" : `$${c.cost_usd.toFixed(4)}`}
+                {c.held_out && " · held-out"}
                 {c.forbidden_tool_used && (
                   <span className="flex items-center gap-1">
                     <AlertTriangle className="size-3.5" /> used a forbidden tool

@@ -17,7 +17,7 @@ async def _handler(ctx: ToolContext, args: dict) -> dict:
         return await call(
             "/execute",
             {
-                "session_id": ctx.session_id,
+                "session_id": ctx.workspace_id,
                 "language": language,
                 "code": code,
                 "timeout_seconds": timeout,

@@ -106,6 +106,21 @@ class Settings(BaseSettings):
     orch_node_timeout_seconds: int = 180
     orch_run_log_retention_days: int = 30
 
+    # ── self-improving harness (Phase 17, PLAN §17) ──────────────────
+    # minimum matching failing cases (held_out=False) before Weakness Miner
+    # writes a report at all — too few is noise, not a "pattern".
+    harness_min_failing_cases: int = 3
+    # a case counts as failing on redundant tool calls once it has at least
+    # this many exact-duplicate calls.
+    harness_redundant_tool_threshold: int = 1
+    # off by default: mining/proposing/validating a patch after every eval run
+    # is a real behavioral change to opt into, not a silent default. The
+    # pipeline can always be triggered manually via the harness/run endpoint.
+    harness_auto_run_on_eval: bool = False
+    # judge/proposal model; blank = Judge's own fallback (summary_model, then
+    # a hardcoded default).
+    harness_judge_model: str | None = None
+
     # ── usage budget (Wave 5) — 0 disables the warning ────────────────
     monthly_budget_usd: float = 0.0
 

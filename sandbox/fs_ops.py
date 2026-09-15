@@ -177,6 +177,23 @@ def search_files(
     return _paged(matches, offset, limit, scan_cap_hit)
 
 
+def clone_workspace(from_session_id: str, to_session_id: str) -> dict:
+    """Mirror one workspace into another (Phase 18: QA's isolated checkout).
+
+    A host-level copy rather than a container-side ``git clone`` — containers
+    only bind-mount one workspace dir each (``docker_runner.py``), so there is
+    no path from which a container could reach a *second* session's directory.
+    Always a full, exact mirror: the destination is wiped first so a stale
+    file from a previous iteration's QA run can never linger.
+    """
+    src = workspace_dir(from_session_id)
+    dst = workspace_dir(to_session_id)
+    if dst.exists():
+        shutil.rmtree(dst)
+    shutil.copytree(src, dst)
+    return {"cloned": True}
+
+
 def _relpath(abs_path: str, session_id: str) -> str:
     try:
         return str(Path(abs_path).resolve().relative_to(workspace_dir(session_id)))

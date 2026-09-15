@@ -145,6 +145,9 @@ export interface AgentEvalCaseInput {
   expected_outcome?: string | null;
   optimal_steps?: number | null;
   forbidden_tools?: string[];
+  // held out of Weakness Miner's input pool (Phase 17) — a fair regression
+  // check needs cases the miner never saw.
+  held_out?: boolean;
 }
 export interface AgentEvalRun {
   id: string;
@@ -177,6 +180,69 @@ export interface AgentEvalCase extends AgentEvalCaseInput {
   cost_usd: number | null;
   latency_ms: number | null;
   judge_rationale: Record<string, unknown>;
+}
+
+// ── Harness self-improvement (Phase 17) ──────────────────────────────
+export interface WeaknessReport {
+  id: string;
+  agent_id: string;
+  agent_eval_run_id: string;
+  pattern: string;
+  example_case_ids: string[];
+  created_at: string;
+}
+// ── Multi-day projects (Phase 18) ────────────────────────────────────
+export interface ProjectRun {
+  id: string;
+  name: string;
+  planner_agent_id: string;
+  developer_agent_id: string;
+  qa_agent_id: string;
+  root_session_id: string;
+  workspace_path: string;
+  status: "active" | "paused" | "done";
+  max_iterations: number;
+  iterations_done: number;
+  budget_usd: number;
+  spent_usd: number;
+  qa_fail_streak: number;
+  qa_fail_pause_threshold: number;
+  schedule: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface ProjectIteration {
+  id: string;
+  project_run_id: string;
+  iteration_no: number;
+  planner_session_id: string | null;
+  developer_session_id: string | null;
+  qa_session_id: string | null;
+  workspace_commit_sha: string | null;
+  qa_verdict: "pass" | "fail" | null;
+  qa_reason: string | null;
+  cost_usd: number;
+  status: "running" | "done" | "qa_failed" | "error";
+  error: string | null;
+  created_at: string;
+  finished_at: string | null;
+}
+
+export interface AgentConfigVersion {
+  id: string;
+  agent_id: string;
+  parent_version_id: string | null;
+  weakness_report_id: string | null;
+  diff: Record<string, unknown>;
+  config_snapshot: Record<string, unknown>;
+  rationale: string;
+  source_eval_run_id: string | null;
+  status: "proposed" | "rejected" | "active" | "superseded";
+  held_in_score: number | null;
+  held_out_score: number | null;
+  reject_reason: string | null;
+  created_at: string;
+  activated_at: string | null;
 }
 
 // ── RAG / Knowledge Base (Phase 12) ─────────────────────────────────
@@ -473,6 +539,21 @@ export const api = {
     request<{ run: AgentEvalRun; cases: AgentEvalCase[] }>(`/agent-eval/runs/${id}`),
   deleteAgentEvalRun: (id: string) =>
     request<null>(`/agent-eval/runs/${id}`, { method: "DELETE" }),
+  runHarnessCycle: (runId: string) =>
+    request<{ scheduled: boolean; run_id: string }>(`/agent-eval/runs/${runId}/harness/run`, {
+      method: "POST",
+    }),
+
+  // ── harness self-improvement (Phase 17) ──────────────────────────
+  listAgentConfigVersions: (agentId: string) =>
+    request<AgentConfigVersion[]>(`/agents/${agentId}/config-versions`),
+  listWeaknessReports: (agentId: string) =>
+    request<WeaknessReport[]>(`/agents/${agentId}/weakness-reports`),
+  rollbackAgentConfigVersion: (agentId: string, versionId: string) =>
+    request<AgentConfigVersion>(
+      `/agents/${agentId}/config-versions/${versionId}/rollback`,
+      { method: "POST" },
+    ),
 
   listConversations: (before?: string) =>
     request<ConversationSummary[]>(`/conversations${before ? `?before=${encodeURIComponent(before)}` : ""}`),
@@ -531,6 +612,31 @@ export const api = {
   deleteCronJob: (id: string) => request<null>(`/cron-jobs/${id}`, { method: "DELETE" }),
   runCronJob: (id: string) =>
     request<{ session_id: string }>(`/cron-jobs/${id}/run-now`, { method: "POST" }),
+
+  // ── multi-day projects (Phase 18) ────────────────────────────────
+  listProjects: () => request<ProjectRun[]>("/projects"),
+  createProject: (body: {
+    name: string;
+    planner_agent_id: string;
+    developer_agent_id: string;
+    qa_agent_id: string;
+    max_iterations?: number;
+    budget_usd?: number;
+    schedule?: string | null;
+  }) => request<ProjectRun>("/projects", { method: "POST", body: JSON.stringify(body) }),
+  getProject: (id: string) =>
+    request<{ run: ProjectRun; iterations: ProjectIteration[] }>(`/projects/${id}`),
+  patchProject: (
+    id: string,
+    body: Partial<Pick<ProjectRun, "max_iterations" | "budget_usd" | "schedule">>,
+  ) => request<ProjectRun>(`/projects/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  pauseProject: (id: string) => request<ProjectRun>(`/projects/${id}/pause`, { method: "POST" }),
+  resumeProject: (id: string) => request<ProjectRun>(`/projects/${id}/resume`, { method: "POST" }),
+  iterateProjectNow: (id: string) =>
+    request<{ scheduled: boolean; project_id: string }>(`/projects/${id}/iterate-now`, {
+      method: "POST",
+    }),
+  deleteProject: (id: string) => request<null>(`/projects/${id}`, { method: "DELETE" }),
 
   listMcpServers: () => request<McpServer[]>("/mcp-servers"),
   createMcpServer: (body: Partial<McpServer>) =>

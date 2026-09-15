@@ -102,6 +102,7 @@ def agent_eval_case_out(c) -> dict:
         "expected_outcome": c.expected_outcome,
         "optimal_steps": c.optimal_steps,
         "forbidden_tools": c.forbidden_tools,
+        "held_out": bool(getattr(c, "held_out", False)),
         "answer": c.answer,
         "resolved": c.resolved,
         "steps_taken": c.steps_taken,
@@ -112,6 +113,78 @@ def agent_eval_case_out(c) -> dict:
         "cost_usd": c.cost_usd,
         "latency_ms": c.latency_ms,
         "judge_rationale": c.judge_rationale,
+    }
+
+
+# ── Self-improving harness (Phase 17) ──────────────────────────────────
+def weakness_report_out(w) -> dict:
+    return {
+        "id": w.id,
+        "agent_id": w.agent_id,
+        "agent_eval_run_id": w.agent_eval_run_id,
+        "pattern": w.pattern,
+        "example_case_ids": w.example_case_ids,
+        "created_at": _z(w.created_at),
+    }
+
+
+def project_run_out(r) -> dict:
+    return {
+        "id": r.id,
+        "name": r.name,
+        "planner_agent_id": r.planner_agent_id,
+        "developer_agent_id": r.developer_agent_id,
+        "qa_agent_id": r.qa_agent_id,
+        "root_session_id": r.root_session_id,
+        "workspace_path": r.workspace_path,
+        "status": r.status,
+        "max_iterations": r.max_iterations,
+        "iterations_done": r.iterations_done,
+        "budget_usd": r.budget_usd,
+        "spent_usd": r.spent_usd,
+        "qa_fail_streak": r.qa_fail_streak,
+        "qa_fail_pause_threshold": r.qa_fail_pause_threshold,
+        "schedule": r.schedule,
+        "created_at": _z(r.created_at),
+        "updated_at": _z(r.updated_at),
+    }
+
+
+def project_iteration_out(it) -> dict:
+    return {
+        "id": it.id,
+        "project_run_id": it.project_run_id,
+        "iteration_no": it.iteration_no,
+        "planner_session_id": it.planner_session_id,
+        "developer_session_id": it.developer_session_id,
+        "qa_session_id": it.qa_session_id,
+        "workspace_commit_sha": it.workspace_commit_sha,
+        "qa_verdict": it.qa_verdict,
+        "qa_reason": it.qa_reason,
+        "cost_usd": it.cost_usd,
+        "status": it.status,
+        "error": it.error,
+        "created_at": _z(it.created_at),
+        "finished_at": _z(it.finished_at),
+    }
+
+
+def agent_config_version_out(v) -> dict:
+    return {
+        "id": v.id,
+        "agent_id": v.agent_id,
+        "parent_version_id": v.parent_version_id,
+        "weakness_report_id": v.weakness_report_id,
+        "diff": v.diff,
+        "config_snapshot": v.config_snapshot,
+        "rationale": v.rationale,
+        "source_eval_run_id": v.source_eval_run_id,
+        "status": v.status,
+        "held_in_score": v.held_in_score,
+        "held_out_score": v.held_out_score,
+        "reject_reason": v.reject_reason,
+        "created_at": _z(v.created_at),
+        "activated_at": _z(v.activated_at),
     }
 
 

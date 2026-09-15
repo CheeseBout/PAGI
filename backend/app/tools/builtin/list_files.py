@@ -5,7 +5,7 @@ from ..sandbox_client import SandboxError, call
 
 
 async def _handler(ctx: ToolContext, args: dict) -> dict:
-    payload = {"session_id": ctx.session_id}
+    payload = {"session_id": ctx.workspace_id}
     if args.get("path"):
         payload["path"] = args["path"]
     try:

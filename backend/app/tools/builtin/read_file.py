@@ -9,7 +9,7 @@ async def _handler(ctx: ToolContext, args: dict) -> dict:
     if not path:
         return {"error": "path is required"}
     try:
-        return await call("/files/read", {"session_id": ctx.session_id, "path": path})
+        return await call("/files/read", {"session_id": ctx.workspace_id, "path": path})
     except SandboxError as exc:
         return {"error": str(exc)}
 

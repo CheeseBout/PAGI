@@ -30,10 +30,12 @@ from app.main import app  # noqa: E402
 # sqlite file (module-scoped DATABASE_URL, see above).
 _TABLES_FK_ORDER = [
     "traces", "tool_approvals", "session_tool_grants", "memory_chunks",
-    "agent_runs", "agent_eval_cases", "agent_eval_runs",
+    "agent_runs", "agent_config_versions", "weakness_reports",
+    "agent_eval_cases", "agent_eval_runs",
     "kb_eval_cases", "kb_eval_runs", "kb_query_logs", "kb_chunks",
     "kb_documents", "kb_collections",
-    "cron_jobs", "mcp_servers", "messages", "sessions", "agents", "users",
+    "cron_jobs", "project_iterations", "project_runs",
+    "mcp_servers", "messages", "sessions", "agents", "users",
 ]
 
 

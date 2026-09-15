@@ -96,12 +96,18 @@ async def run_delegated(
     wait_for_approval: bool = True,
     mode: str = "interactive",
     unattended_allowed_tools: list[str] | None = None,
+    workspace_id: str | None = None,
 ) -> dict:
     """Get-or-create the child session for this tool_call, run it to completion,
     return ``{answer, child_session_id, tokens_in, tokens_out, cost_usd}``.
 
     ``wait_for_approval`` / ``mode`` / ``unattended_allowed_tools`` are inherited
     from the parent turn (SPEC §15.5): a cron turn's whole tree runs unattended.
+
+    ``workspace_id`` (Phase 18, PLAN §18) is normally left ``None`` — the child
+    then uses its own session id as its sandbox workspace, as always. Callers
+    that need several children to share one persistent sandbox workspace (a
+    multi-day project's Planner/Developer/QA) pass the same value each time.
 
     Any ceiling / validation failure comes back as ``{"error": code, "message": ...}``
     — never a raised exception (SPEC §15.3): the agent must be able to handle
@@ -117,6 +123,7 @@ async def run_delegated(
             wait_for_approval=wait_for_approval,
             mode=mode,
             unattended_allowed_tools=unattended_allowed_tools,
+            workspace_id=workspace_id,
         )
     except DelegationError as exc:
         log.info("delegation_rejected", code=exc.code, session=parent_session_id)
@@ -133,6 +140,7 @@ async def _run_delegated(
     wait_for_approval: bool = True,
     mode: str = "interactive",
     unattended_allowed_tools: list[str] | None = None,
+    workspace_id: str | None = None,
 ) -> dict:
     s = get_settings()
     if not s.subagent_enabled:
@@ -212,6 +220,11 @@ async def _run_delegated(
             done_answer = await _final_answer(db, child.id)
             if child.turn_status == "idle" and done_answer is not None:
                 return await _result(db, child.id, done_answer)
+
+        if workspace_id is not None and child.workspace_id != workspace_id:
+            child.workspace_id = workspace_id
+            db.add(child)
+            await db.commit()
 
         worker_tools = list(worker.tools_allowed or [])
         parent_tools = set(parent_agent.tools_allowed or []) if parent_agent else set()

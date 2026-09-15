@@ -87,6 +87,7 @@ async def create_run(
                 expected_outcome=c.expected_outcome,
                 optimal_steps=c.optimal_steps,
                 forbidden_tools=c.forbidden_tools,
+                held_out=c.held_out,
             )
         )
     await db.commit()
@@ -158,6 +159,25 @@ async def ab_report(
         )
     out.sort(key=lambda x: x["pattern"])
     return {"agent_id": agent_id, "arms": out}
+
+
+@router.post("/runs/{run_id}/harness/run", status_code=status.HTTP_202_ACCEPTED)
+async def run_harness_cycle(
+    run_id: str, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)
+):
+    """Manually trigger the Phase 17 mine -> propose -> validate pipeline for
+    this eval run (poll ``GET /api/agents/{agent_id}/config-versions`` for the
+    outcome — the same fire-and-poll idiom as creating an eval run)."""
+    run = await db.get(AgentEvalRun, run_id)
+    if run is None:
+        raise APIError(404, "not_found", "run not found")
+    if run.status != "done":
+        raise APIError(409, "run_not_done", "eval run has not finished yet")
+
+    from ..harness import schedule as schedule_harness
+
+    schedule_harness(run_id)
+    return {"scheduled": True, "run_id": run_id}
 
 
 @router.get("/runs/{run_id}")

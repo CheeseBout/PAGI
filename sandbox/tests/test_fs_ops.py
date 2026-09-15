@@ -79,3 +79,30 @@ def test_search_files_limit_is_clamped():
     fs_ops.write_file("sess5", "one.txt", "needle")
     out = fs_ops.search_files("sess5", "needle", limit=10_000)
     assert out["limit"] == fs_ops._SEARCH_MAX_LIMIT
+
+
+def test_clone_workspace_mirrors_files():
+    fs_ops.write_file("proj1", "a.txt", "hello")
+    fs_ops.write_file("proj1", "sub/b.txt", "world")
+    assert fs_ops.clone_workspace("proj1", "proj1-qa") == {"cloned": True}
+    assert fs_ops.read_file("proj1-qa", "a.txt")["content"] == "hello"
+    assert fs_ops.read_file("proj1-qa", "sub/b.txt")["content"] == "world"
+
+
+def test_clone_workspace_overwrites_stale_destination():
+    fs_ops.write_file("proj2", "keep.txt", "v1")
+    fs_ops.clone_workspace("proj2", "proj2-qa")
+    fs_ops.write_file("proj2-qa", "stale.txt", "should be wiped")
+    fs_ops.write_file("proj2", "keep.txt", "v2")
+    fs_ops.clone_workspace("proj2", "proj2-qa")
+    assert fs_ops.read_file("proj2-qa", "keep.txt")["content"] == "v2"
+    with pytest.raises(fs_ops.InvalidPath):
+        fs_ops.read_file("proj2-qa", "stale.txt")
+
+
+def test_clone_workspace_rejects_invalid_session_id():
+    fs_ops.write_file("proj3", "a.txt", "x")
+    with pytest.raises(fs_ops.InvalidPath):
+        fs_ops.clone_workspace("proj3", "../evil")
+    with pytest.raises(fs_ops.InvalidPath):
+        fs_ops.clone_workspace("../evil", "proj3-qa")

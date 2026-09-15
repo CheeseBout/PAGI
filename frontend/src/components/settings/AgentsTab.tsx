@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Agent, type AgentInput, type KbCollection, type OpenRouterModel } from "../../api/client";
+import { HarnessHistory } from "../HarnessHistory";
 import { ConfigForm } from "./ConfigForm";
 import { checkboxCls, selectCls } from "./formStyles";
 import { OrchestrationTab } from "./OrchestrationTab";
@@ -453,6 +454,17 @@ export default function AgentsTab() {
               />
             </div>
           </details>
+
+          {editing !== "new" && (
+            <details className="config-group rounded-lg border border-border px-2.5 py-1.5">
+              <summary className="cursor-pointer text-sm font-semibold text-muted">
+                Harness History
+              </summary>
+              <div className="mt-2">
+                <HarnessHistory agentId={editing} />
+              </div>
+            </details>
+          )}
 
           <div className="form-actions flex gap-2">
             <Button onClick={save}>Save</Button>

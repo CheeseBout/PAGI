@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, status
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from pydantic import ValidationError
 
+from ..core.agent_config import apply_patch
 from ..core.orchestration.config import DELEGATION_PATTERNS, OrchestrationConfig
 from ..db.models import Agent, ChatSession, User
 from ..rag.config import RagConfig
@@ -99,9 +98,7 @@ async def update_agent(
     if data.get("provider") and data["provider"] not in _PROVIDERS:
         raise APIError(422, "invalid_provider", f"provider must be one of {sorted(_PROVIDERS)}")
     _validate_configs(data)
-    for key, value in data.items():
-        setattr(agent, key, value)
-    agent.updated_at = datetime.now(timezone.utc)
+    apply_patch(agent, data)
     if data.get("is_default"):
         await _unset_other_defaults(db, agent.id)
     db.add(agent)
