@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, type Agent, type AgentInput, type KbCollection, type OpenRouterModel } from "../../api/client";
 import { HarnessHistory } from "../HarnessHistory";
 import { ConfigForm } from "./ConfigForm";
@@ -45,6 +45,7 @@ const EMPTY_AGENT: AgentInput = {
   is_delegatable: false,
   delegate_description: "",
   orchestration: {},
+  avatar_config: {},
 };
 
 /** Warn on tab-close/refresh while a form is open — the one dirty-guard that
@@ -74,8 +75,43 @@ export default function AgentsTab() {
   const [freeModels, setFreeModels] = useState<OpenRouterModel[]>([]);
   const [freeModelsErr, setFreeModelsErr] = useState<string>("");
   const [freeModelsLoading, setFreeModelsLoading] = useState(false);
+  const [avatarModels, setAvatarModels] = useState<string[]>([]);
+  const [avatarModelsErr, setAvatarModelsErr] = useState<string>("");
+  const [avatarModelsLoading, setAvatarModelsLoading] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarUploadErr, setAvatarUploadErr] = useState<string>("");
+  const avatarUploadInputRef = useRef<HTMLInputElement | null>(null);
 
   useWarnOnUnload(editing !== null);
+
+  // `webkitdirectory`/`directory` aren't in React's typed <input> props —
+  // set imperatively so TS doesn't need an `any` cast in the JSX below.
+  useEffect(() => {
+    const el = avatarUploadInputRef.current;
+    if (!el) return;
+    el.setAttribute("webkitdirectory", "");
+    el.setAttribute("directory", "");
+  }, []);
+
+  // Uploads always go to the shared library (SPEC §20.5) — one upload,
+  // usable by every agent's picker, no per-agent setup, and it works even
+  // for a not-yet-saved "new" agent (the shared library isn't agent-scoped).
+  async function handleAvatarFolderPicked(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    e.target.value = ""; // let the same folder be re-picked later (re-upload)
+    if (!files || files.length === 0 || !editing) return;
+    setAvatarUploading(true);
+    setAvatarUploadErr("");
+    try {
+      const result = await api.uploadSharedAvatarModel(files);
+      setAvatarModels((prev) => Array.from(new Set([...prev, ...result.models])).sort());
+      setAvatar({ model_path: result.model_path });
+    } catch (err) {
+      setAvatarUploadErr(err instanceof Error ? err.message : "upload failed");
+    } finally {
+      setAvatarUploading(false);
+    }
+  }
 
   useEffect(() => {
     if (!editing || form.provider !== "openrouter") return;
@@ -91,6 +127,28 @@ export default function AgentsTab() {
       live = false;
     };
   }, [editing, form.provider]);
+
+  // Models are discovered on disk rather than typed by hand: a real agent's
+  // picker merges its own directory with the shared library server-side
+  // (api.listAvatarModels); a not-yet-saved "new" agent has no directory of
+  // its own yet, so it sees the shared library directly instead.
+  useEffect(() => {
+    if (!editing) {
+      setAvatarModels([]);
+      return;
+    }
+    let live = true;
+    setAvatarModelsLoading(true);
+    setAvatarModelsErr("");
+    const req = editing === "new" ? api.listSharedAvatarModels() : api.listAvatarModels(editing);
+    req
+      .then((r) => live && setAvatarModels(r.models))
+      .catch((e) => live && setAvatarModelsErr(e?.message || "failed to list avatar models"))
+      .finally(() => live && setAvatarModelsLoading(false));
+    return () => {
+      live = false;
+    };
+  }, [editing]);
 
   const reload = () => api.listAgents().then(setAgents);
   useEffect(() => {
@@ -141,7 +199,12 @@ export default function AgentsTab() {
       is_delegatable: a.is_delegatable ?? false,
       delegate_description: a.delegate_description || "",
       orchestration: a.orchestration || {},
+      avatar_config: a.avatar_config || {},
     });
+  }
+
+  function setAvatar(patch: Record<string, unknown>) {
+    setForm((f) => ({ ...f, avatar_config: { ...(f.avatar_config || {}), ...patch } }));
   }
 
   function toggleCollection(id: string) {
@@ -438,6 +501,106 @@ export default function AgentsTab() {
                     placeholder="e.g. writes and runs Python in the sandbox"
                   />
                 </Label>
+              )}
+            </div>
+          </details>
+
+          <details
+            className="config-group rounded-lg border border-border px-2.5 py-1.5"
+            open={Boolean((form.avatar_config as Record<string, unknown> | undefined)?.enabled)}
+          >
+            <summary className="cursor-pointer text-sm font-semibold text-muted">
+              Avatar (2D){(form.avatar_config as { enabled?: boolean } | undefined)?.enabled ? " (on)" : ""}
+            </summary>
+            <div className="mt-2 flex flex-col gap-2">
+              <Label className="checkbox">
+                <input
+                  type="checkbox"
+                  className={checkboxCls}
+                  checked={Boolean((form.avatar_config as { enabled?: boolean } | undefined)?.enabled)}
+                  onChange={(e) => setAvatar({ enabled: e.target.checked })}
+                />
+                Show a Live2D avatar beside the chat for this agent
+              </Label>
+              {Boolean((form.avatar_config as { enabled?: boolean } | undefined)?.enabled) && (
+                <>
+                  <Label>
+                    Model
+                    {(() => {
+                      const modelPath =
+                        (form.avatar_config as { model_path?: string } | undefined)?.model_path || "";
+                      const options =
+                        modelPath && !avatarModels.includes(modelPath)
+                          ? [modelPath, ...avatarModels]
+                          : avatarModels;
+                      return (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <select
+                              className={cn(selectCls, "flex-1")}
+                              value={modelPath}
+                              disabled={avatarModelsLoading}
+                              onChange={(e) => setAvatar({ model_path: e.target.value })}
+                            >
+                              <option value="">
+                                {avatarModelsLoading
+                                  ? "Loading…"
+                                  : options.length === 0
+                                    ? "— no models found —"
+                                    : "— pick a model —"}
+                              </option>
+                              {options.map((m) => (
+                                <option key={m} value={m}>
+                                  {m}
+                                </option>
+                              ))}
+                            </select>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={avatarUploading}
+                              onClick={() => avatarUploadInputRef.current?.click()}
+                            >
+                              {avatarUploading ? "Uploading…" : "Upload folder"}
+                            </Button>
+                            <input
+                              ref={avatarUploadInputRef}
+                              type="file"
+                              multiple
+                              className="hidden"
+                              onChange={handleAvatarFolderPicked}
+                            />
+                          </div>
+                          {avatarModelsErr && (
+                            <span className="text-xs text-danger">{avatarModelsErr}</span>
+                          )}
+                          {avatarUploadErr && (
+                            <span className="text-xs text-danger">{avatarUploadErr}</span>
+                          )}
+                          {!avatarModelsErr && options.length === 0 && !avatarModelsLoading && (
+                            <span className="text-xs text-muted">
+                              No models in the shared library yet{editing !== "new" ? " (and none placed for this agent specifically)" : ""}
+                              — click "Upload folder" and pick a model's folder (containing its{" "}
+                              <code>*.model3.json</code>). Uploaded here, it's available to every agent.
+                            </span>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </Label>
+                  <Label>
+                    Scale
+                    <Input
+                      type="number"
+                      step="0.05"
+                      min={0.01}
+                      max={10}
+                      value={(form.avatar_config as { scale?: number } | undefined)?.scale ?? 1}
+                      onChange={(e) => setAvatar({ scale: Number(e.target.value) })}
+                    />
+                  </Label>
+                </>
               )}
             </div>
           </details>

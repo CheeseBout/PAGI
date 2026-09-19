@@ -160,6 +160,50 @@ a **🗂 Files** toggle that browses the session's sandbox workspace.
 
 ---
 
+## 2D avatar (optional, SPEC §20, `2D_PLAN.md`)
+
+Any agent can show a Live2D avatar beside the chat, driven by conversation
+state (idle/thinking/talking/acting/waiting — `frontend/src/hooks/useAvatarState.ts`).
+Off by default. Rendering goes through the official **Cubism Web Framework**,
+vendored into `frontend/src/vendor/live2d/` (not a third-party wrapper — an
+earlier version used `pixi-live2d-display`, which never caught up to Cubism
+5; see `2D_PLAN.md` §3 for why that got replaced).
+
+1. **Cubism Core is proprietary** (Live2D Inc.) and can't be distributed via
+   npm — download it yourself from the official
+   [Cubism SDK for Web](https://www.live2d.com/en/sdk/download/web/) and place
+   `Core/live2dcubismcore.min.js` at
+   `frontend/public/live2d/live2dcubismcore.min.js`. Missing this file is
+   safe: the avatar shows a static placeholder instead of crashing.
+2. Get a model (any Cubism 3/4-format model — `*.model3.json` + its
+   textures/motions; the SDK above bundles 8 free samples under
+   `Samples/Resources/`) and add it to the **shared library** — one upload,
+   every agent's picker sees it, no per-agent setup:
+   - **Upload from the UI**: Settings → Agents → edit any agent (even one
+     you haven't saved yet) → **Avatar (2D)** → turn it on → **Upload
+     folder**, then pick the model's folder (the one containing its
+     `*.model3.json`) — the browser sends every file in it, no zipping
+     needed. Lands in `backend/data/avatars/_shared/<model folder>/`.
+   - **Place it by hand** at `backend/data/avatars/_shared/<model folder>/`
+     if you'd rather not go through the browser.
+   - (Less common) a model can also be uploaded/placed **private to one
+     agent** at `backend/data/avatars/<agent_id>/<model folder>/` instead —
+     it shadows a same-named shared model for that agent only; everyone else
+     still sees the shared version.
+3. Pick the model from the **Model** dropdown (populated from whatever's
+   actually in the shared library + that agent's own directory — no typing a
+   path by hand) → **Save**.
+
+Avatar assets are served unauthenticated at `GET /avatars/{agent_id}/...`
+(`backend/app/api/routes_avatar_files.py`) — an accepted risk for a
+single-tenant deployment behind an internal reverse proxy, same posture as the
+Docker-socket note above. The upload endpoints themselves
+(`POST /avatar-library/upload`, `POST /agents/{id}/avatar/upload`) *are*
+behind the normal session auth.
+Text-to-speech / real audio lip-sync is not implemented yet; `AvatarCanvas`'s
+`audioLevel` prop is the single point where a future TTS phase plugs in (see
+`2D_SPEC.md` §20.11).
+
 ## Security
 
 - Passwords hashed with Argon2id; session = HS256 JWT in an `httponly` cookie.
@@ -294,10 +338,11 @@ LLM injects a scripted fake provider or a `FakeJudge`.
 | Sub-agents & patterns | `test_subagent.py`, `test_patterns.py`, `test_config_schema.py` | event bubbling, `delegate_task` idempotency, depth/budget ceilings, Reflexion/Router/Supervisor strategies, pattern A/B arm recording |
 | Agent eval | `test_agent_eval.py` | trajectory metrics (redundant calls, forbidden tools, step efficiency), background run lifecycle, usage split by origin |
 | Sandbox | `sandbox/tests/` | file ops incl. binary writes, path-traversal blocking, concurrency/quota guards, egress filter degrading safely without Docker |
-| Frontend | `src/**/*.test.ts` | WebSocket URL building, live-event reducer, line diff |
+| 2D avatar | `test_avatar.py` | avatar_config validation, `avatar_ready` derivation, static-file route (nosniff header, path-traversal, unknown agent), model listing, folder-upload endpoint (extension allowlist, path traversal, single-top-level-folder / single-model3.json rules, per-subfolder overwrite), shared library (upload/list, own-copy-shadows-shared resolution) |
+| Frontend | `src/**/*.test.ts` | WebSocket URL building, live-event reducer, line diff, avatar state machine transitions |
 
-> Last run on this machine: **backend 162 passed** (47s), **sandbox 18 passed**,
-> **frontend 16 passed**. E2E not run in that pass — it needs all three services
+> Last run on this machine: **backend 207 passed** (52s), **sandbox 18 passed**,
+> **frontend 27 passed**. E2E not run in that pass — it needs all three services
 > up. Re-run before trusting after further changes.
 
 ### Not yet in place

@@ -26,6 +26,7 @@ class AgentCreate(BaseModel):
     is_delegatable: bool = False
     delegate_description: str = ""
     orchestration: dict = Field(default_factory=dict)
+    avatar_config: dict = Field(default_factory=dict)
 
 
 class AgentUpdate(BaseModel):
@@ -44,6 +45,7 @@ class AgentUpdate(BaseModel):
     is_delegatable: bool | None = None
     delegate_description: str | None = None
     orchestration: dict | None = None
+    avatar_config: dict | None = None
 
 
 # ── RAG / Knowledge Base (Phase 12, SPEC §2.9) ────────────────────────

@@ -16,6 +16,7 @@ os.environ.setdefault("ADMIN_PASSWORD", "admin")
 os.environ.setdefault("SANDBOX_URL", "http://localhost:9")
 os.environ.setdefault("CORS_ORIGINS", "http://localhost:5173")
 os.environ.setdefault("UPLOAD_DIR", os.path.join(_TMP_DIR, "uploads"))
+os.environ.setdefault("AVATAR_DIR", os.path.join(_TMP_DIR, "avatars"))
 
 import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402

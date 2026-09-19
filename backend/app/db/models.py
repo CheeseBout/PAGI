@@ -57,6 +57,9 @@ class Agent(SQLModel, table=True):
     delegate_description: str = Field(default="")
     # ── orchestration (Phase 14, SPEC §16) — {} = pattern "react" ─────
     orchestration: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    # ── 2D avatar (SPEC §20.2) — {} = no avatar attached. Shape validated by
+    # core/avatar.py::AvatarConfig on write, never at the DB layer.
+    avatar_config: dict = Field(default_factory=dict, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
 

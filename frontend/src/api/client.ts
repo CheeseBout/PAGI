@@ -43,6 +43,11 @@ export interface Agent {
   is_delegatable?: boolean;
   delegate_description?: string;
   orchestration?: Record<string, unknown>;
+  // ── 2D avatar (SPEC §20.2) ─────────────────────────────────────────
+  avatar_config?: Record<string, unknown>;
+  /** derived: enabled=true AND model_path resolves to a real file right now
+   * (SPEC §20.5). Recomputed server-side every GET, never cached. */
+  avatar_ready?: boolean;
 }
 
 export interface OpenRouterModel {
@@ -67,6 +72,7 @@ export type AgentInput = {
   is_delegatable?: boolean;
   delegate_description?: string;
   orchestration?: Record<string, unknown>;
+  avatar_config?: Record<string, unknown>;
 };
 
 // ── Config schema forms (Phase 15, SPEC §17) ───────────────────────
@@ -493,6 +499,36 @@ export interface Approval {
   agent_name?: string;
 }
 
+/** Shared by the per-agent and shared-library avatar upload endpoints — both
+ * take the same `<input webkitdirectory>` FileList and return the same shape. */
+async function uploadAvatarFolder(
+  path: string,
+  files: FileList | File[],
+): Promise<{ model_path: string; models: string[] }> {
+  const fd = new FormData();
+  for (const file of Array.from(files)) {
+    // `<input webkitdirectory>` sets this to the path relative to the picked
+    // folder (e.g. "hiyori/Hiyori.model3.json") — the field name IS that
+    // path; the backend reads the form generically instead of expecting a
+    // fixed "files" key (routes_agents.py::upload_avatar_model /
+    // routes_avatar_library.py::upload_to_avatar_library).
+    const rel = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
+    fd.append(rel, file, file.name);
+  }
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    credentials: "include",
+    body: fd,
+  });
+  const text = await res.text();
+  const body = text ? JSON.parse(text) : null;
+  if (!res.ok) {
+    const e = body?.error ?? {};
+    throw new ApiError(res.status, e.code ?? "error", e.message ?? res.statusText);
+  }
+  return body as { model_path: string; models: string[] };
+}
+
 export const api = {
   login: (username: string, password: string) =>
     request<{ user: { id: string; username: string } }>("/auth/login", {
@@ -598,6 +634,17 @@ export const api = {
     ),
 
   // ── settings CRUD (Wave 4d) ───────────────────────────────────────
+  // 2D avatar models: an agent's picker merges its own directory with the
+  // shared library server-side (`GET /agents/{id}/avatar-models`); the
+  // shared-library endpoints below aren't agent-scoped at all, so they work
+  // even for a not-yet-saved agent.
+  listAvatarModels: (agentId: string) =>
+    request<{ models: string[] }>(`/agents/${agentId}/avatar-models`),
+  uploadAvatarModel: (agentId: string, files: FileList | File[]) =>
+    uploadAvatarFolder(`/agents/${agentId}/avatar/upload`, files),
+  listSharedAvatarModels: () => request<{ models: string[] }>("/avatar-library"),
+  uploadSharedAvatarModel: (files: FileList | File[]) =>
+    uploadAvatarFolder("/avatar-library/upload", files),
   createAgent: (body: AgentInput) =>
     request<Agent>("/agents", { method: "POST", body: JSON.stringify(body) }),
   updateAgent: (id: string, body: Partial<AgentInput>) =>

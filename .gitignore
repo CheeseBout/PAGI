@@ -23,6 +23,10 @@ frontend/dist/
 frontend/.vite/
 *.tsbuildinfo
 
+# Live2D Cubism Core — proprietary (Live2D Inc.), not redistributable; each
+# dev downloads it manually (see README § 2D avatar).
+frontend/public/live2d/
+
 # Test output (playwright.config.ts writes playwright-report/)
 e2e-screenshots
 playwright-report/
@@ -44,3 +48,5 @@ PLAN.md
 SPEC.md
 TESTPLAN.md
 KNOWLEDGE.md
+2D_PLAN.md
+2D_SPEC.md

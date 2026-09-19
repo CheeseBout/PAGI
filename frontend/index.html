@@ -12,6 +12,15 @@
     />
   </head>
   <body>
+    <!--
+      2D avatar (PLAN §4.3): Cubism Core is Live2D Inc.'s proprietary runtime,
+      not distributable via npm. Download it manually from the official
+      Cubism SDK for Web (developer.live2d.com) and place it at
+      frontend/public/live2d/live2dcubismcore.min.js — see README. Missing
+      this file is expected/safe: AvatarCanvas detects the load failure and
+      falls back to a static placeholder (SPEC §20.8), it doesn't crash the app.
+    -->
+    <script src="/live2d/live2dcubismcore.min.js"></script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

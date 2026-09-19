@@ -9,11 +9,13 @@ import {
   type Grant,
 } from "../api/client";
 import { useChatSession } from "../features/chat/useChatSession";
+import AvatarCanvas, { type AvatarConfig } from "../components/Avatar/AvatarCanvas";
 import ChatWindow, { type ToolEvent } from "../components/ChatWindow";
 import InputBox from "../components/InputBox";
 import ModelPicker from "../components/ModelPicker";
 import RightPanel, { type RightPanelTab } from "../components/RightPanel";
 import Sidebar from "../components/Sidebar";
+import { useAvatarState } from "../hooks/useAvatarState";
 import { useStore } from "../store/useStore";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -239,6 +241,8 @@ export default function Chat() {
     (a) => a.id === conversations.find((c) => c.id === currentId)?.agent_id,
   );
   const { live } = chat;
+  const avatarState = useAvatarState(chat.latestEvent, chat.sendPulse);
+  const avatarConfig = currentAgent?.avatar_config as AvatarConfig | undefined;
 
   return (
     <div className="app-shell flex h-dvh">
@@ -369,6 +373,16 @@ export default function Chat() {
                 onEditMessage={editMessage}
                 onRegenerate={regenerate}
               />
+              {avatarConfig?.enabled && currentAgent && (
+                <div className="avatar-column hidden w-64 shrink-0 border-l border-border sm:block">
+                  <AvatarCanvas
+                    agentId={currentAgent.id}
+                    avatarConfig={avatarConfig}
+                    aiState={avatarState}
+                    className="h-full w-full"
+                  />
+                </div>
+              )}
               {rightPanel && (
                 <>
                   <div

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from ..core.avatar import is_ready_for
 from ..db.models import (
     Agent,
     ChatSession,
@@ -36,6 +37,7 @@ def _z(dt: datetime | None) -> str | None:
 
 
 def agent_out(a: Agent) -> dict:
+    avatar_config = getattr(a, "avatar_config", None) or {}
     return {
         "id": a.id,
         "name": a.name,
@@ -53,6 +55,8 @@ def agent_out(a: Agent) -> dict:
         "is_delegatable": bool(getattr(a, "is_delegatable", False)),
         "delegate_description": getattr(a, "delegate_description", "") or "",
         "orchestration": getattr(a, "orchestration", None) or {},
+        "avatar_config": avatar_config,
+        "avatar_ready": is_ready_for(a.id, avatar_config),
         "created_at": _z(a.created_at),
         "updated_at": _z(a.updated_at),
     }

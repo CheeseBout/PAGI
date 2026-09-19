@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
+from starlette.datastructures import UploadFile
 
 from pydantic import ValidationError
 
 from ..core.agent_config import apply_patch
+from ..core.avatar import AvatarConfig, AvatarUploadError, list_models, save_uploaded_model
 from ..core.orchestration.config import DELEGATION_PATTERNS, OrchestrationConfig
 from ..db.models import Agent, ChatSession, User
 from ..rag.config import RagConfig
@@ -42,6 +44,11 @@ def _validate_configs(data: dict) -> None:
                         422, "missing_workers",
                         f"pattern '{pattern}' needs a non-empty {key}",
                     )
+    if data.get("avatar_config") is not None:
+        try:
+            AvatarConfig.model_validate(data["avatar_config"] or {})
+        except ValidationError as exc:
+            raise APIError(422, "invalid_avatar_config", f"invalid avatar_config: {exc.errors()}")
 
 
 async def _unset_other_defaults(db: AsyncSession, keep_id: str | None) -> None:
@@ -105,6 +112,49 @@ async def update_agent(
     await db.commit()
     await db.refresh(agent)
     return agent_out(agent)
+
+
+@router.get("/{agent_id}/avatar-models")
+async def list_agent_avatar_models(
+    agent_id: str, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)
+):
+    """*.model3.json files found under data/avatars/{agent_id}/ — powers the
+    Settings UI's model picker (SPEC §20.2's model_path is otherwise a raw
+    string the operator has to get exactly right by hand)."""
+    agent = await db.get(Agent, agent_id)
+    if agent is None:
+        raise APIError(404, "not_found", "Agent not found")
+    return {"models": list_models(agent_id)}
+
+
+@router.post("/{agent_id}/avatar/upload", status_code=status.HTTP_201_CREATED)
+async def upload_avatar_model(
+    agent_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Folder upload from the Settings UI's "Upload model" button (SPEC
+    §20.5) — the browser's `<input webkitdirectory>` reports every file's
+    path relative to the picked folder via ``File.webkitRelativePath``; the
+    frontend appends each one under a form field named for that path, so we
+    read the form manually instead of declaring fixed `File(...)` params."""
+    agent = await db.get(Agent, agent_id)
+    if agent is None:
+        raise APIError(404, "not_found", "Agent not found")
+
+    form = await request.form()
+    entries: list[tuple[str, bytes]] = []
+    for key, value in form.multi_items():
+        if isinstance(value, UploadFile):
+            entries.append((key, await value.read()))
+
+    try:
+        model_path = save_uploaded_model(agent_id, entries)
+    except AvatarUploadError as exc:
+        raise APIError(400, "invalid_upload", str(exc))
+
+    return {"model_path": model_path, "models": list_models(agent_id)}
 
 
 @router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)

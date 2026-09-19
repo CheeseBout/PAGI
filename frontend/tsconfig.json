@@ -17,7 +17,8 @@
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@framework/*": ["./src/vendor/live2d/framework/src/*"]
     }
   },
   "include": ["src"]

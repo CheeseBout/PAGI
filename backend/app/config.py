@@ -23,6 +23,14 @@ class Settings(BaseSettings):
     max_upload_mb: int = 20
     upload_dir: str = "./data/uploads"
 
+    # ── 2D avatar (SPEC §20.3) — model files placed manually under this root,
+    # one subdirectory per agent id.
+    avatar_dir: str = "./data/avatars"
+    # folder-upload endpoint (POST /agents/{id}/avatar/upload) — caps on a
+    # single <input webkitdirectory> selection.
+    max_avatar_mb: int = 50
+    max_avatar_files: int = 300
+
     # pull the latest litellm price map from the network on boot (see
     # observability/tracing.estimate_cost). Off by default — it's a network call.
     litellm_refresh_model_cost: bool = False

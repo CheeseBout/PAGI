@@ -11,13 +11,20 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
-    alias: { "@": path.resolve(__dirname, "./src") },
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+      // Cubism Web Framework's own source uses this alias internally
+      // (matches the SDK's own Samples/TypeScript/Demo/vite.config.mts) —
+      // 2D_PLAN.md §3.2.
+      "@framework": path.resolve(__dirname, "./src/vendor/live2d/framework/src"),
+    },
   },
   server: {
     port: 5173,
     proxy: {
       "/api": { target: "http://localhost:8000", changeOrigin: true },
       "/ws": { target: "ws://localhost:8000", ws: true },
+      "/avatars": { target: "http://localhost:8000", changeOrigin: true },
     },
   },
   test: {

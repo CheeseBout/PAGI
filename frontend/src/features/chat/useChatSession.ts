@@ -49,6 +49,12 @@ export function useChatSession(currentId: string | null, callbacks: ChatSessionC
   const [wsOpen, setWsOpen] = useState(false);
   const socketRef = useRef<ChatSocket | null>(null);
 
+  // Raw event stream + send-pulse, exposed for useAvatarState (SPEC §20.6) —
+  // avatar state is derived independently of the reducer above, so a change
+  // here never affects the reducer's own behaviour.
+  const [latestEvent, setLatestEvent] = useState<ServerEvent | null>(null);
+  const [sendPulse, setSendPulse] = useState(false);
+
   const handleEvent = useCallback((event: ServerEvent) => {
     // Side effects that need to inspect pre-dispatch state (or need no state
     // at all) are decided here, before the pure reducer runs.
@@ -58,6 +64,7 @@ export function useChatSession(currentId: string | null, callbacks: ChatSessionC
     } else if (event.type === "approval_resolved") {
       callbacksRef.current.onApprovalResolved();
     }
+    setLatestEvent(event);
     dispatch(event);
   }, []);
 
@@ -70,6 +77,7 @@ export function useChatSession(currentId: string | null, callbacks: ChatSessionC
 
   useEffect(() => {
     dispatch({ type: "reset" });
+    setLatestEvent(null);
     socketRef.current?.close();
     socketRef.current = null;
     if (!currentId) return;
@@ -93,6 +101,7 @@ export function useChatSession(currentId: string | null, callbacks: ChatSessionC
   const reportError = useCallback((message: string) => dispatch({ type: "external_error", message }), []);
   const sendUserMessage = useCallback((content: string, attachmentIds: string[] = []) => {
     dispatch({ type: "reset_for_new_turn" });
+    setSendPulse((p) => !p);
     socketRef.current?.sendUserMessage(content, attachmentIds);
   }, []);
   const abort = useCallback(() => {
@@ -101,10 +110,12 @@ export function useChatSession(currentId: string | null, callbacks: ChatSessionC
   }, []);
   const regenerate = useCallback(() => {
     dispatch({ type: "reset_for_edit_or_regenerate" });
+    setSendPulse((p) => !p);
     socketRef.current?.regenerate();
   }, []);
   const editMessage = useCallback((messageId: string, content: string) => {
     dispatch({ type: "reset_for_edit_or_regenerate" });
+    setSendPulse((p) => !p);
     socketRef.current?.editMessage(messageId, content);
   }, []);
   const decideApproval = useCallback(
@@ -115,5 +126,17 @@ export function useChatSession(currentId: string | null, callbacks: ChatSessionC
     [],
   );
 
-  return { live, wsOpen, seedApprovals, reportError, sendUserMessage, abort, regenerate, editMessage, decideApproval };
+  return {
+    live,
+    wsOpen,
+    seedApprovals,
+    reportError,
+    sendUserMessage,
+    abort,
+    regenerate,
+    editMessage,
+    decideApproval,
+    latestEvent,
+    sendPulse,
+  };
 }
