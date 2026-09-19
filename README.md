@@ -23,6 +23,7 @@ The authoritative contracts live in the code: DB schema in
 backend/    FastAPI — API gateway, agent runtime, providers, tools, HITL, scheduler
 frontend/   React + Vite + TypeScript SPA (chat UI, approval cards, model picker)
 sandbox/    FastAPI — runs agent code/file ops in ephemeral Docker containers
+desktop/    Electron shell for the floating overlay (optional, Windows) — see "Desktop overlay"
 docker/     docker-compose.yml wiring all three together
 ```
 
@@ -203,6 +204,62 @@ behind the normal session auth.
 Text-to-speech / real audio lip-sync is not implemented yet; `AvatarCanvas`'s
 `audioLevel` prop is the single point where a future TTS phase plugs in (see
 `2D_SPEC.md` §20.11).
+
+## Desktop overlay (optional, Windows)
+
+A small floating window: the agent's 2D avatar over your desktop, an input box under
+it, speech bubbles for short replies, and a panel for longer ones. It is one more
+client of the same backend — one continuous chat per agent (the full history is in the
+web UI, tagged "Overlay") — so approvals, tools and cost tracking behave exactly as on
+the web. Off by default; nothing about it runs unless you start it.
+
+```bash
+# backend and the frontend dev server running as above, then:
+cd desktop
+npm install
+npm run dev            # or: npm run build && npm start
+```
+
+You start the backend yourself; the overlay just connects to it (and keeps retrying
+with backoff if it isn't up). **Log in once inside the overlay** — the window keeps its
+own cookie jar, so being logged in on the web doesn't carry over. Tray icon → "Đăng
+xuất" signs out.
+
+| | |
+|---|---|
+| Move | drag the avatar |
+| Ask | type in the box, Enter to send |
+| Panel / history | the panel button (or click a bubble); ↗ opens the full chat on the web |
+| Hide / show | `Ctrl+Alt+P` (`PAGI_OVERLAY_HOTKEY_TOGGLE`) or the tray icon |
+| Screenshot | the crop button, `Ctrl+Alt+X` (`PAGI_OVERLAY_HOTKEY_CAPTURE`), or type `/screen` (optionally followed by your question) |
+
+**Screenshots and privacy.** A capture only ever starts from one of those three things
+you do — never on a timer, never because the model asked. You drag a region, see a
+preview, and it is uploaded **only when you press send**; the desktop app keeps it in
+memory and writes nothing to disk. Once sent it is stored like any attachment and goes
+to the LLM provider of the agent you're talking to (the agent needs vision enabled).
+
+**Approvals and notifications.** A tool that needs approval shows an approval card in
+the bubble; if the overlay is hidden you get a system toast (it names the tool but
+never shows the arguments — click it to see the card). Finished cron runs and project
+iterations also raise a toast. Notifications are not stored: anything that happens while
+the overlay isn't running is only in the web UI. Cron jobs and project loops keep
+running in the backend either way.
+
+**Resources.** The avatar renders at most 30 fps, drops to 15 fps after 30 s of
+inactivity, and stops entirely while the window is hidden. Memory is dominated by the
+**model's textures** (each RGBA pixel is 4 bytes of GPU memory): a model with 2048×2048
+textures costs tens of MB, one with several 4096×4096 ones hundreds, and a 16384×16384
+one about a gigabyte — pick or downscale models accordingly.
+
+Settings (environment variables read by the desktop app): `PAGI_OVERLAY_URL` (default
+`http://localhost:5173`; use the same origin as the API, and https if it isn't
+localhost), `PAGI_OVERLAY_HOTKEY_TOGGLE`, `PAGI_OVERLAY_HOTKEY_CAPTURE`. If
+`ELECTRON_RUN_AS_NODE` is set in your shell (VS Code's terminal sets it), use
+`npm run dev`/`npm start`, which clear it. Spec: `SPEC.md` §21. Automated checks:
+`desktop/e2e/README.md`.
+
+---
 
 ## Security
 
