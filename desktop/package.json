@@ -1,0 +1,24 @@
+{
+  "name": "pagi-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PAGI desktop overlay (SPEC §21) — thin Electron shell around the /overlay route",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "node scripts/run.mjs dev",
+    "build": "electron-vite build",
+    "start": "node scripts/run.mjs preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "e2e": "node e2e/run-all.cjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "electron": "^33.2.0",
+    "electron-vite": "^2.3.0",
+    "playwright": "^1.63.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.8"
+  }
+}

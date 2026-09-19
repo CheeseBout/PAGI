@@ -1,0 +1,82 @@
+<!doctype html>
+<!-- Region selector shown over ONE display while capturing (SPEC §21.9). It shows the
+     frozen screenshot the main process took, dimmed, and lets the user drag a
+     rectangle. Nothing here touches the network: local file, strict CSP. The only
+     bridge is window.pagiSelector (desktop/src/preload/selector.ts). -->
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'"
+    />
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #000; cursor: crosshair; user-select: none; }
+      #shot { position: fixed; inset: 0; width: 100vw; height: 100vh; }
+      #dim { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); }
+      #box {
+        position: fixed; display: none; border: 1.5px solid #7c9cff;
+        box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.45); /* darkens everything outside the box */
+        background: transparent;
+      }
+      #hint {
+        position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+        font: 13px/1.4 system-ui, sans-serif; color: #fff; background: rgba(20, 24, 34, 0.9);
+        padding: 6px 12px; border-radius: 999px; pointer-events: none;
+      }
+      #size {
+        position: fixed; display: none; font: 12px/1 ui-monospace, monospace; color: #fff;
+        background: rgba(20, 24, 34, 0.9); padding: 3px 6px; border-radius: 4px; pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <img id="shot" alt="" draggable="false" />
+    <div id="dim"></div>
+    <div id="box"></div>
+    <div id="size"></div>
+    <div id="hint">Kéo để chọn vùng · Esc hoặc chuột phải để huỷ</div>
+    <script>
+      const shot = document.getElementById("shot");
+      const dim = document.getElementById("dim");
+      const box = document.getElementById("box");
+      const size = document.getElementById("size");
+      let start = null;
+
+      window.pagiSelector.onImage((dataUrl) => { shot.src = dataUrl; });
+
+      const rectOf = (a, b) => ({
+        x: Math.min(a.x, b.x), y: Math.min(a.y, b.y),
+        width: Math.abs(a.x - b.x), height: Math.abs(a.y - b.y),
+      });
+
+      window.addEventListener("mousedown", (e) => {
+        if (e.button === 2) return window.pagiSelector.done(null); // right click cancels
+        if (e.button !== 0) return;
+        start = { x: e.clientX, y: e.clientY };
+        dim.style.display = "none"; // the box's own shadow takes over the dimming
+        box.style.display = "block";
+      });
+
+      window.addEventListener("mousemove", (e) => {
+        if (!start) return;
+        const r = rectOf(start, { x: e.clientX, y: e.clientY });
+        Object.assign(box.style, { left: r.x + "px", top: r.y + "px", width: r.width + "px", height: r.height + "px" });
+        size.style.display = "block";
+        size.style.left = r.x + "px";
+        size.style.top = Math.max(0, r.y - 22) + "px";
+        size.textContent = Math.round(r.width) + " × " + Math.round(r.height);
+      });
+
+      window.addEventListener("mouseup", (e) => {
+        if (!start || e.button !== 0) return;
+        const r = rectOf(start, { x: e.clientX, y: e.clientY });
+        start = null;
+        window.pagiSelector.done(r); // the main process validates size/bounds
+      });
+
+      window.addEventListener("keydown", (e) => { if (e.key === "Escape") window.pagiSelector.done(null); });
+      window.addEventListener("contextmenu", (e) => e.preventDefault());
+    </script>
+  </body>
+</html>
