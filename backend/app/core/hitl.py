@@ -9,12 +9,14 @@ state from the DB), rather than returning 410.
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import datetime, timezone
 
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from ..db.models import Message, SessionToolGrant, ToolApproval
+from ..db.models import ChatSession, Message, SessionToolGrant, ToolApproval
+from .notify import clip, notify
 
 _waiters: dict[str, asyncio.Future[str]] = {}
 
@@ -78,7 +80,31 @@ async def get_or_create_approval(
     db.add(approval)
     await db.commit()
     await db.refresh(approval)
+    # SPEC §21.7: only a *newly created* approval notifies (the early return above
+    # is the resumed-turn path, which must not raise a second toast).
+    await notify_approval(db, approval, "approval_pending")
     return approval
+
+
+async def notify_approval(db: AsyncSession, approval: ToolApproval, event_type: str) -> None:
+    """Fire-and-forget user notification (never raises — SPEC §21.7)."""
+    try:
+        chat = await db.get(ChatSession, approval.session_id)
+        if chat is None:
+            return
+        if event_type == "approval_pending":
+            event = {
+                "type": "approval_pending",
+                "approval_id": approval.id,
+                "session_id": approval.session_id,
+                "tool_name": approval.tool_name,
+                "args_preview": clip(json.dumps(approval.tool_args or {}, ensure_ascii=False, default=str)),
+            }
+        else:
+            event = {"type": "approval_resolved", "approval_id": approval.id, "status": approval.status}
+        await notify(chat.user_id, event)
+    except Exception:  # pragma: no cover - notifying must never break HITL
+        pass
 
 
 async def mark_resolved(
@@ -90,6 +116,7 @@ async def mark_resolved(
     db.add(approval)
     await db.commit()
     await db.refresh(approval)
+    await notify_approval(db, approval, "approval_resolved")
     return approval
 
 

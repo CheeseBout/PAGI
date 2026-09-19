@@ -16,6 +16,8 @@ from sqlmodel import select
 
 from ..config import get_settings
 from ..core.agent_runtime import run_turn
+from ..core.hitl import notify_approval
+from ..core.notify import clip, notify
 from ..core.ws_manager import manager
 from ..db.models import ChatSession, CronJob, Message, ToolApproval, User
 from ..db.session import SessionLocal
@@ -95,6 +97,7 @@ async def sweep_expired_approvals() -> int:
             await manager.broadcast(
                 a.session_id, {"type": "approval_resolved", "approval_id": a.id, "status": "expired"}
             )
+            await notify_approval(db, a, "approval_resolved")
     log.info("expired_approvals_swept", count=len(rows))
     return len(rows)
 
@@ -127,6 +130,7 @@ async def run_cron_job(job_id: str) -> None:
                 return
             session_id = await _seed_session(db, job, owner.id)
             allowed = list(job.unattended_allowed_tools or [])
+            user_id, job_name = owner.id, job.name
 
     if project_run_id is not None:
         log.info("cron_run_project_iteration", job_id=job_id, project_run_id=project_run_id)
@@ -136,11 +140,56 @@ async def run_cron_job(job_id: str) -> None:
         return
 
     log.info("cron_run", job_id=job_id, session_id=session_id)
-    await run_turn(
-        session_id,
-        wait_for_approval=False,
-        mode="unattended",
-        unattended_allowed_tools=allowed,
+    await _run_cron_turn(job_id, job_name, session_id, user_id, allowed)
+
+
+async def _run_cron_turn(
+    job_id: str, job_name: str, session_id: str, user_id: str, allowed: list[str]
+) -> None:
+    """Run the seeded cron session, then tell the user how it went (SPEC §21.7).
+
+    ``status`` is "error" when the turn raised or produced no assistant reply —
+    turn errors are only streamed over the (unwatched) chat socket, not stored,
+    so an empty result is the best signal available here.
+    """
+    status = "ok"
+    try:
+        await run_turn(
+            session_id,
+            wait_for_approval=False,
+            mode="unattended",
+            unattended_allowed_tools=allowed,
+        )
+    except Exception:
+        log.warning("cron_turn_failed", job_id=job_id, session_id=session_id, exc_info=True)
+        status = "error"
+
+    summary = ""
+    try:
+        async with SessionLocal() as db:
+            last = (
+                await db.exec(
+                    select(Message)
+                    .where(Message.session_id == session_id, Message.role == "assistant")
+                    .order_by(Message.created_at.desc())
+                )
+            ).first()
+            summary = (last.content or "") if last else ""
+        if status == "ok" and not summary:
+            status = "error"
+    except Exception:  # pragma: no cover - summary is best-effort
+        pass
+
+    await notify(
+        user_id,
+        {
+            "type": "cron_run_finished",
+            "job_id": job_id,
+            "job_name": job_name,
+            "session_id": session_id,
+            "status": status,
+            "summary": clip(summary),
+        },
     )
 
 
@@ -155,6 +204,7 @@ async def trigger_now(job_id: str, user_id: str) -> str | None:
             project_run_id = None
             session_id = await _seed_session(db, job, user_id)
             allowed = list(job.unattended_allowed_tools or [])
+            job_name = job.name
 
     import asyncio
 
@@ -164,12 +214,5 @@ async def trigger_now(job_id: str, user_id: str) -> str | None:
         asyncio.create_task(project_dev.run_iteration(project_run_id))
         return None
 
-    asyncio.create_task(
-        run_turn(
-            session_id,
-            wait_for_approval=False,
-            mode="unattended",
-            unattended_allowed_tools=allowed,
-        )
-    )
+    asyncio.create_task(_run_cron_turn(job_id, job_name, session_id, user_id, allowed))
     return session_id

@@ -138,6 +138,8 @@ from .api import (  # noqa: E402
     routes_harness,
     routes_mcp,
     routes_meta,
+    routes_notifications,
+    routes_overlay,
     routes_projects,
     routes_rag,
     routes_workspace,
@@ -159,8 +161,10 @@ for module in (
     routes_agent_eval,
     routes_harness,
     routes_projects,
+    routes_overlay,
     routes_admin,
     routes_chat,
+    routes_notifications,
 ):
     app.include_router(module.router)
 

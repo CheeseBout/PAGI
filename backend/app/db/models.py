@@ -91,6 +91,11 @@ class ChatSession(SQLModel, table=True):
     root_session_id: str | None = Field(default=None, foreign_key="sessions.id", index=True)
     depth: int = Field(default=0)
     kind: str = Field(default="chat", max_length=16)  # chat | subagent
+    # ── desktop overlay (Phase 20, SPEC §21.5) ───────────────────────
+    # web = created from the web UI; overlay = the overlay's continuous chat.
+    # Same session either way — only lets the web UI badge it and the overlay
+    # find its own again. Validated in the API (routes_overlay), not a CHECK.
+    origin: str = Field(default="web", max_length=16)
     # tool_call id of the delegate_task that spawned this session. UNIQUE — this
     # is the idempotency latch: a resumed parent turn re-uses the child instead
     # of spawning a second tree (SPEC §15.5).

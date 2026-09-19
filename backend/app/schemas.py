@@ -133,6 +133,10 @@ class ConversationCreate(BaseModel):
     agent_id: str
 
 
+class OverlaySessionRequest(BaseModel):
+    agent_id: str | None = None  # default: the is_default agent
+
+
 class ConversationPatch(BaseModel):
     title: str | None = None
     archived: bool | None = None

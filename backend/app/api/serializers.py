@@ -70,6 +70,7 @@ def session_out(s: ChatSession) -> dict:
         "title": s.title,
         "archived": s.archived,
         "kind": getattr(s, "kind", "chat"),
+        "origin": getattr(s, "origin", "web"),
         "parent_session_id": getattr(s, "parent_session_id", None),
         "depth": getattr(s, "depth", 0),
         "created_at": _z(s.created_at),

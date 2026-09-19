@@ -26,6 +26,7 @@ from ...db.models import Agent, ChatSession, ProjectIteration, ProjectRun
 from ...db.session import SessionLocal
 from ...tools import sandbox_client
 from ..delegation import run_delegated
+from ..notify import notify
 
 log = structlog.get_logger("pagi.project_dev")
 
@@ -206,6 +207,26 @@ async def create_project_run(
     return run
 
 
+async def _notify_project(project_run_id: str, event_type: str, **fields) -> None:
+    """User notification for a project event (SPEC §21.7). Fire-and-forget:
+    looks up the owner via the run's root session and never raises."""
+    try:
+        async with SessionLocal() as db:
+            run = await db.get(ProjectRun, project_run_id)
+            if run is None:
+                return
+            root = await db.get(ChatSession, run.root_session_id)
+            if root is None:
+                return
+            user_id, name = root.user_id, run.name
+        await notify(
+            user_id,
+            {"type": event_type, "project_run_id": project_run_id, "project_name": name, **fields},
+        )
+    except Exception:  # pragma: no cover - notifying must never break the loop
+        log.warning("project_notify_failed", project_run_id=project_run_id, exc_info=True)
+
+
 async def _fail_iteration(iteration_id: str, code: str, message: str) -> None:
     async with SessionLocal() as db:
         it = await db.get(ProjectIteration, iteration_id)
@@ -216,7 +237,11 @@ async def _fail_iteration(iteration_id: str, code: str, message: str) -> None:
         it.finished_at = datetime.now(timezone.utc)
         db.add(it)
         await db.commit()
+        run_id, iteration_no = it.project_run_id, it.iteration_no
     log.warning("project_iteration_failed", iteration_id=iteration_id, code=code, message=message)
+    await _notify_project(
+        run_id, "project_iteration_finished", iteration_no=iteration_no, qa_verdict=None, status="error"
+    )
 
 
 async def run_iteration(project_run_id: str) -> None:
@@ -228,6 +253,7 @@ async def run_iteration(project_run_id: str) -> None:
             run.status = "paused"
             db.add(run)
             await db.commit()
+            await _notify_project(project_run_id, "project_paused", reason="budget")
             return
 
         next_no = run.iterations_done + 1
@@ -370,14 +396,17 @@ async def run_iteration(project_run_id: str) -> None:
             it.status = "qa_failed" if verdict == "fail" else "done"
             it.finished_at = datetime.now(timezone.utc)
             db.add(it)
+            iteration_status = it.status
 
             run = await db.get(ProjectRun, project_run_id)
             run.iterations_done = next_no
             run.spent_usd += cost
+            paused_reason = None
             if verdict == "fail":
                 run.qa_fail_streak += 1
                 if run.qa_fail_streak >= run.qa_fail_pause_threshold:
                     run.status = "paused"
+                    paused_reason = "qa_fail_streak"
             else:
                 run.qa_fail_streak = 0
             if run.status == "active" and run.iterations_done >= run.max_iterations:
@@ -389,5 +418,11 @@ async def run_iteration(project_run_id: str) -> None:
             "project_iteration_done", project_run_id=project_run_id, iteration_no=next_no,
             verdict=verdict, commit_sha=sha,
         )
+        await _notify_project(
+            project_run_id, "project_iteration_finished",
+            iteration_no=next_no, qa_verdict=verdict, status=iteration_status,
+        )
+        if paused_reason:
+            await _notify_project(project_run_id, "project_paused", reason=paused_reason)
     except Exception as exc:  # pragma: no cover - keep the cron job alive
         await _fail_iteration(iter_id, "unexpected", str(exc))

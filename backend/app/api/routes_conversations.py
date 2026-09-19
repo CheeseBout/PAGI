@@ -55,6 +55,7 @@ async def list_conversations(
     archived: bool = Query(default=False),
     limit: int = Query(default=50, le=200),
     before: str | None = Query(default=None, description="ISO updated_at cursor — page older"),
+    origin: str | None = Query(default=None, description="web | overlay (SPEC §21.5)"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -63,6 +64,10 @@ async def list_conversations(
         ChatSession.archived == archived,
         ChatSession.kind == "chat",  # sub-agent sessions never show in the sidebar
     )
+    if origin is not None:
+        if origin not in ("web", "overlay"):
+            raise APIError(400, "bad_request", "`origin` must be 'web' or 'overlay'")
+        stmt = stmt.where(ChatSession.origin == origin)
     if before:
         try:
             stmt = stmt.where(ChatSession.updated_at < _parse_cursor_ts(before))
@@ -70,7 +75,13 @@ async def list_conversations(
             raise APIError(400, "bad_request", "`before` must be an ISO-8601 timestamp")
     rows = (await db.exec(stmt.order_by(ChatSession.updated_at.desc()).limit(limit))).all()
     return [
-        {"id": s.id, "title": s.title, "agent_id": s.agent_id, "updated_at": session_out(s)["updated_at"]}
+        {
+            "id": s.id,
+            "title": s.title,
+            "agent_id": s.agent_id,
+            "origin": s.origin,
+            "updated_at": session_out(s)["updated_at"],
+        }
         for s in rows
     ]
 
