@@ -97,24 +97,50 @@ function wsUrl(sessionId: string): string {
   return `${proto}//${location.host}${WS_BASE}/chat/${sessionId}`;
 }
 
+// Reconnect backoff (SPEC §21.10): 1.5s, doubling up to a 30s ceiling; reset once
+// a connection opens. The web UI benefits too — a down backend used to be
+// retried every 1.5s forever.
+const RECONNECT_BASE_MS = 1500;
+const RECONNECT_MAX_MS = 30_000;
+
+export function reconnectDelay(attempt: number): number {
+  return Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** Math.max(0, attempt));
+}
+
+/** Close code the server uses for "not logged in" (SPEC §3). */
+export const WS_CLOSE_UNAUTHENTICATED = 4401;
+
 export class ChatSocket {
   private ws: WebSocket | null = null;
   private closedByUs = false;
+  private attempt = 0;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private sessionId: string,
     private onEvent: (e: ServerEvent) => void,
     private onStatus: (s: "open" | "closed") => void,
+    /** server closed with 4401 — reconnecting can't help until the user logs in again */
+    private onAuthLost?: () => void,
   ) {}
 
   connect() {
     this.closedByUs = false;
     const ws = new WebSocket(wsUrl(this.sessionId));
     this.ws = ws;
-    ws.onopen = () => this.onStatus("open");
-    ws.onclose = () => {
+    ws.onopen = () => {
+      this.attempt = 0;
+      this.onStatus("open");
+    };
+    ws.onclose = (ev) => {
       this.onStatus("closed");
-      if (!this.closedByUs) setTimeout(() => this.connect(), 1500);
+      if (this.closedByUs) return;
+      if (ev.code === WS_CLOSE_UNAUTHENTICATED) {
+        this.closedByUs = true;
+        this.onAuthLost?.();
+        return;
+      }
+      this.retryTimer = setTimeout(() => this.connect(), reconnectDelay(this.attempt++));
     };
     ws.onmessage = (ev) => {
       try {
@@ -146,6 +172,92 @@ export class ChatSocket {
   }
   close() {
     this.closedByUs = true;
+    if (this.retryTimer) clearTimeout(this.retryTimer);
     this.ws?.close();
+  }
+}
+
+// ── global notification stream (SPEC §21.7) ─────────────────────────────
+export type NotificationEvent =
+  | { type: "hello"; pending_approvals: number }
+  | { type: "ping" }
+  | {
+      type: "cron_run_finished";
+      job_id: string;
+      job_name: string;
+      session_id: string;
+      status: "ok" | "error";
+      summary: string;
+    }
+  | {
+      type: "project_iteration_finished";
+      project_run_id: string;
+      project_name: string;
+      iteration_no: number;
+      qa_verdict: string | null;
+      status: "done" | "qa_failed" | "error";
+    }
+  | { type: "project_paused"; project_run_id: string; project_name: string; reason: string }
+  | {
+      type: "approval_pending";
+      approval_id: string;
+      session_id: string;
+      tool_name: string;
+      args_preview: string;
+    }
+  | { type: "approval_resolved"; approval_id: string; status: string };
+
+function notificationsUrl(): string {
+  if (WS_BASE.startsWith("ws://") || WS_BASE.startsWith("wss://")) return `${WS_BASE}/notifications`;
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  return `${proto}//${location.host}${WS_BASE}/notifications`;
+}
+
+/** One-way server -> client stream, reconnecting with the same backoff as
+ * ChatSocket. Delivery is at-most-once with no replay, so `onOpen` fires on
+ * every (re)connect: the owner must re-sync from REST there (SPEC §21.7). */
+export class NotificationSocket {
+  private ws: WebSocket | null = null;
+  private closedByUs = false;
+  private attempt = 0;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(
+    private onEvent: (e: NotificationEvent) => void,
+    private onOpen?: () => void,
+    private onAuthLost?: () => void,
+  ) {}
+
+  connect() {
+    this.closedByUs = false;
+    const ws = new WebSocket(notificationsUrl());
+    this.ws = ws;
+    ws.onopen = () => {
+      this.attempt = 0;
+      this.onOpen?.();
+    };
+    ws.onclose = (ev) => {
+      if (this.closedByUs) return;
+      if (ev.code === WS_CLOSE_UNAUTHENTICATED) {
+        this.closedByUs = true;
+        this.onAuthLost?.();
+        return;
+      }
+      this.retryTimer = setTimeout(() => this.connect(), reconnectDelay(this.attempt++));
+    };
+    ws.onmessage = (ev) => {
+      try {
+        this.onEvent(JSON.parse(ev.data) as NotificationEvent);
+      } catch {
+        /* ignore malformed frame */
+      }
+    };
+  }
+
+  close() {
+    this.closedByUs = true;
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.ws?.close();
+    this.ws = null;
   }
 }

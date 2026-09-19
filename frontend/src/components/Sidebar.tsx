@@ -155,6 +155,14 @@ export default function Sidebar({
                     <span className="conv-title flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
                       {label}
                     </span>
+                    {c.origin === "overlay" && (
+                      <span
+                        className="conv-origin shrink-0 rounded bg-bg-alt px-1 text-3xs text-muted"
+                        title="Chat from the desktop overlay"
+                      >
+                        Overlay
+                      </span>
+                    )}
                   </button>
                   <button
                     type="button"

@@ -28,7 +28,12 @@ export interface ChatSessionCallbacks {
   onFileToolTouched: () => void;
 }
 
-export function useChatSession(currentId: string | null, callbacks: ChatSessionCallbacks) {
+export function useChatSession(
+  currentId: string | null,
+  callbacks: ChatSessionCallbacks,
+  /** the socket was closed with 4401 (not logged in) — see ChatSocket */
+  onAuthLost?: () => void,
+) {
   const reducer = useCallback(
     (state: ChatLiveState, action: ChatLiveAction) => chatLiveReducer(state, action, { currentId }),
     [currentId],
@@ -44,6 +49,10 @@ export function useChatSession(currentId: string | null, callbacks: ChatSessionC
   const callbacksRef = useRef(callbacks);
   useEffect(() => {
     callbacksRef.current = callbacks;
+  });
+  const onAuthLostRef = useRef(onAuthLost);
+  useEffect(() => {
+    onAuthLostRef.current = onAuthLost;
   });
 
   const [wsOpen, setWsOpen] = useState(false);
@@ -81,7 +90,12 @@ export function useChatSession(currentId: string | null, callbacks: ChatSessionC
     socketRef.current?.close();
     socketRef.current = null;
     if (!currentId) return;
-    const sock = new ChatSocket(currentId, handleEvent, (s) => setWsOpen(s === "open"));
+    const sock = new ChatSocket(
+      currentId,
+      handleEvent,
+      (s) => setWsOpen(s === "open"),
+      () => onAuthLostRef.current?.(),
+    );
     sock.connect();
     socketRef.current = sock;
     return () => sock.close();

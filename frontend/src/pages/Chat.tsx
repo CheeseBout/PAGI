@@ -120,6 +120,9 @@ export default function Chat() {
       })
       .catch(() => {});
     refreshConversations();
+    // deep link from the desktop overlay's "open full history" (SPEC §21.4.3)
+    const wanted = new URLSearchParams(window.location.search).get("session");
+    if (wanted) setCurrentId(wanted);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

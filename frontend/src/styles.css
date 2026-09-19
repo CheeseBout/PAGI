@@ -193,3 +193,11 @@ code { font-family: var(--font-mono); font-size: 0.9em; }
     scroll-behavior: auto !important;
   }
 }
+
+/* Desktop overlay (SPEC 21.4): the Electron window is transparent, so the
+   page itself must be too. Scoped to html.overlay, set only by pages/Overlay. */
+html.overlay,
+html.overlay body,
+html.overlay #root {
+  background: transparent;
+}

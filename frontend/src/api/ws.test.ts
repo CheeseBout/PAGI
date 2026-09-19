@@ -23,3 +23,12 @@ describe("ServerEvent shapes", () => {
     }
   });
 });
+
+describe("reconnect backoff (SPEC §21.10)", () => {
+  it("starts at 1.5s, doubles, and stops at the 30s ceiling", async () => {
+    const { reconnectDelay } = await import("./ws");
+    expect([0, 1, 2, 3, 4].map(reconnectDelay)).toEqual([1500, 3000, 6000, 12000, 24000]);
+    expect(reconnectDelay(5)).toBe(30000);
+    expect(reconnectDelay(50)).toBe(30000);
+  });
+});

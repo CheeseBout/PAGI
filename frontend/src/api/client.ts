@@ -451,6 +451,8 @@ export interface ConversationSummary {
   title: string | null;
   agent_id: string;
   updated_at: string;
+  /** "overlay" for the desktop overlay's continuous chat (SPEC §21.5); absent = web */
+  origin?: "web" | "overlay";
 }
 
 export interface Attachment {
@@ -605,6 +607,13 @@ export const api = {
   renameConversation: (id: string, title: string) =>
     request(`/conversations/${id}`, { method: "PATCH", body: JSON.stringify({ title }) }),
   deleteConversation: (id: string) => request<null>(`/conversations/${id}`, { method: "DELETE" }),
+
+  // Desktop overlay (SPEC §21.5): idempotent get-or-create of the continuous chat session.
+  overlaySession: (agentId?: string) =>
+    request<{ session: { id: string; agent_id: string; origin: string }; created: boolean }>(
+      "/overlay/session",
+      { method: "POST", body: JSON.stringify(agentId ? { agent_id: agentId } : {}) },
+    ),
 
   listPendingApprovals: () => request<Approval[]>("/approvals?status=pending"),
   approve: (id: string, remember?: "session") =>
