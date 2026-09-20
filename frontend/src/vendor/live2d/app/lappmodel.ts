@@ -11,6 +11,9 @@
  *    handled once globally by AvatarCanvas.tsx instead).
  *  - `enum LoadStep` exported so AvatarCanvas.tsx can poll load completion
  *    (`LoadStep.CompleteSetup`) without re-declaring it.
+ *  - added `clearExpression()` (SPEC §20.14.4/Phase 21) — undoes a hover
+ *    expression by stopping the expression queue outright, since
+ *    `_expressionManager` has no "current expression id" to fade back to.
  */
 
 import { CubismDefaultParameterId } from '@framework/cubismdefaultparameterid';
@@ -790,6 +793,16 @@ export class LAppModel extends CubismUserModel {
         return;
       }
     }
+  }
+
+  /**
+   * (PAGI addition, SPEC §20.14.4) Undo a hover expression by stopping the
+   * expression queue — there's no "previous expression" to fade back to, so
+   * this drops to the model's own base parameters instead. No-op if nothing
+   * is playing.
+   */
+  public clearExpression(): void {
+    this._expressionManager?.stopAllMotions();
   }
 
   /**

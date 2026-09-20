@@ -3,13 +3,16 @@
  * (Live2D Open Software License), trimmed for PAGI (2D_PLAN.md §3.2).
  *
  * Dropped from the original: `LAppView`/`LAppSprite` (background + gear/power
- * button sprites, pinch-zoom/drag view manipulation) and all touch/pointer
- * handling — SPEC §17 doesn't call for any of that, PAGI's avatar is a fixed,
- * non-interactive chat companion. What's left is exactly the per-canvas
- * resource bundle `LAppModel` needs: its own GL context, its own texture
- * manager, its own Live2D manager. One instance == one `AvatarCanvas` mount;
- * `initialize()`/`release()` are meant to be called every mount/unmount, not
- * once per page load like the original Demo app's singleton usage.
+ * button sprites, pinch-zoom/drag view manipulation) — SPEC §17 doesn't call
+ * for any of that. What's left is exactly the per-canvas resource bundle
+ * `LAppModel` needs: its own GL context, its own texture manager, its own
+ * Live2D manager. One instance == one `AvatarCanvas` mount; `initialize()`/
+ * `release()` are meant to be called every mount/unmount, not once per page
+ * load like the original Demo app's singleton usage.
+ *
+ * Mouse interaction (look-follow, hover/tap reactions — SPEC §20.14, Phase
+ * 21) lives entirely in `AvatarCanvas.tsx`, not here: this class stays a pure
+ * per-canvas resource bundle with no pointer handling of its own.
  */
 
 import { LAppGlManager } from './lappglmanager';

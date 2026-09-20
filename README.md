@@ -205,6 +205,16 @@ Text-to-speech / real audio lip-sync is not implemented yet; `AvatarCanvas`'s
 `audioLevel` prop is the single point where a future TTS phase plugs in (see
 `2D_SPEC.md` §20.11).
 
+**Mouse interaction** (SPEC §20.14): the avatar's eyes/head/body follow the
+cursor continuously — even while the agent is busy — using the Cubism
+Framework's own drag-look feature (`setDragging`), which the vendored code
+already ran every frame but never fed with real input before now. Hovering or
+clicking the head/body plays an expression or motion, but only while the
+avatar is `idle` — nothing gets interrupted mid-reply. Reactions are hardcoded
+to the standard Cubism hit-area names (`Head`, `Body`) and a `TapBody` motion
+group; a model that doesn't declare them just doesn't react to touch, silently
+— look-follow still works regardless.
+
 ## Desktop overlay (optional, Windows)
 
 A small floating window: the agent's 2D avatar over your desktop, an input box under

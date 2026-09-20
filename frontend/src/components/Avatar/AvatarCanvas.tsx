@@ -3,6 +3,9 @@
 // this replaced the `pixi-live2d-display` wrapper in v1, which never caught
 // up to Cubism 5) and reacts to `aiState`. Model/texture/motion files are
 // served from `/avatars/{agentId}/...` (routes_avatar_files.py, SPEC §20.4).
+// Owns mouse interaction too (SPEC §20.14, Phase 21: look-follow + hover/tap
+// reactions) — the pure math/classification helpers live in
+// `avatarPointer.ts` so they're unit-testable without a WebGL2 context.
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { CubismFramework, Option } from "@framework/live2dcubismframework";
@@ -11,6 +14,16 @@ import * as LAppDefine from "@/vendor/live2d/app/lappdefine";
 import { LAppModel, LoadStep } from "@/vendor/live2d/app/lappmodel";
 import { LAppPal } from "@/vendor/live2d/app/lapppal";
 import { LAppSubdelegate } from "@/vendor/live2d/app/lappsubdelegate";
+import {
+  canReactToTouch,
+  canTap,
+  clientPointToNdc,
+  eyeAnchorModelY,
+  invertMvpPoint,
+  isTap,
+  lookTarget,
+  modelYExtent,
+} from "./avatarPointer";
 
 const DEFAULT_MAX_FPS = 30; // §20.7/§20.9: cap at 30fps
 
@@ -111,6 +124,14 @@ export default function AvatarCanvas({
   maxFpsRef.current = maxFps;
   const avatarConfigRef = useRef(avatarConfig);
   avatarConfigRef.current = avatarConfig;
+  // Mouse interaction state (SPEC §20.14) — plain refs, not React state: none
+  // of this should ever trigger a re-render.
+  const lastMvpRef = useRef<CubismMatrix44 | null>(null);
+  const pointerDownRef = useRef<{ x: number; y: number; t: number } | null>(null);
+  const lastReactionAtRef = useRef<number>(-Infinity);
+  const hoveringHeadRef = useRef(false);
+  // Eye height in model space, measured once per loaded model (SPEC §20.14.2).
+  const eyeAnchorYRef = useRef<number | null>(null);
 
   const [status, setStatus] = useState<"loading" | "ready" | "error" | "unsupported">("loading");
 
@@ -129,6 +150,7 @@ export default function AvatarCanvas({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    eyeAnchorYRef.current = null;
     let cancelled = false;
     let rafId = 0;
     let reportedReady = false;
@@ -225,10 +247,18 @@ export default function AvatarCanvas({
       }
 
       model.update();
+      if (eyeAnchorYRef.current === null && coreModel) {
+        const ext = modelYExtent(coreModel);
+        if (ext) eyeAnchorYRef.current = eyeAnchorModelY(ext);
+      }
       if (level !== undefined && coreModel) {
         for (const id of model._lipSyncIds) coreModel.setParameterValueById(id, level);
       }
       model.draw(projection);
+      // SPEC §20.14.3: draw() mutates `projection` in place into the full MVP
+      // (projection × modelMatrix) — hold onto it so a tap can invert the
+      // exact matrix this frame was drawn with, instead of rebuilding one.
+      lastMvpRef.current = projection;
       // frames actually rendered (after the fps cap) — lets tests measure the real rate
       const c = canvasEl as HTMLCanvasElement & { __frames?: number };
       c.__frames = (c.__frames ?? 0) + 1;
@@ -265,6 +295,142 @@ export default function AvatarCanvas({
     if (expr) model.setExpression(expr);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiState, status]);
+
+  // -- mouse interaction (SPEC §20.14, Phase 21). Two channels, deliberately
+  // different gating (§20.14.1): look-follow (setDragging) runs unconditionally
+  // below; hover/tap reactions check canReactToTouch(aiStateRef.current) —
+  // aiState !== "idle" skips them without touching look-follow.
+  useEffect(() => {
+    if (!enabled) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ndcFromEvent = (e: MouseEvent) => clientPointToNdc(e.clientX, e.clientY, canvas.getBoundingClientRect());
+
+    // No visual cue otherwise tells the user the avatar is clickable at all —
+    // this is pure UX polish, not part of SPEC §20.14.4's reaction table.
+    const setCursor = (reactive: boolean) => {
+      canvas.style.cursor = reactive ? "pointer" : "";
+    };
+
+    const clearHover = (model: LAppModel) => {
+      if (hoveringHeadRef.current) {
+        hoveringHeadRef.current = false;
+        model.clearExpression();
+      }
+      setCursor(false);
+    };
+
+    const updateHover = (model: LAppModel, ndc: { x: number; y: number }) => {
+      if (!canReactToTouch(aiStateRef.current)) {
+        clearHover(model);
+        return;
+      }
+      const mvp = lastMvpRef.current;
+      if (!mvp) return;
+      const modelPoint = invertMvpPoint(mvp, ndc);
+      const overHead = model.hitTest(LAppDefine.HitAreaNameHead, modelPoint.x, modelPoint.y);
+      if (overHead && !hoveringHeadRef.current) {
+        hoveringHeadRef.current = true;
+        model.setRandomExpression();
+      } else if (!overHead && hoveringHeadRef.current) {
+        hoveringHeadRef.current = false;
+        model.clearExpression();
+      }
+      // Body has no hover *expression* (§20.14.4 only defines one for Head),
+      // but the cursor still affords it as tappable — one extra hitTest, only
+      // when Head already missed.
+      const overBody = overHead ? false : model.hitTest(LAppDefine.HitAreaNameBody, modelPoint.x, modelPoint.y);
+      setCursor(overHead || overBody);
+    };
+
+    // window-level, not canvas-level: the overlay/chat still needs to know
+    // where the pointer is once it leaves the model's box, or look-follow
+    // would freeze the instant the cursor left it (§20.14.2).
+    const onMouseMove = (e: MouseEvent) => {
+      const model = modelRef.current;
+      if (!model || model._state !== LoadStep.CompleteSetup) return;
+      const ndc = ndcFromEvent(e);
+      // Look-follow: unconditional, no aiState gate. The target is relative to
+      // the model's eyes, not the canvas centre (§20.14.2) — on a full-body
+      // model the centre is the belly, and a cursor level with the eyes would
+      // otherwise read as "look up ~21°".
+      const mvp = lastMvpRef.current;
+      const anchorY = eyeAnchorYRef.current;
+      const anchorNdcY = mvp && anchorY !== null ? mvp.transformY(anchorY) : 0;
+      const target = lookTarget(ndc, anchorNdcY);
+      model.setDragging(target.x, target.y);
+      // Test hooks (mirror the `__frames` counter above): let Playwright assert
+      // the exact target reaching the model without needing a model whose
+      // parameters visibly move.
+      const hooks = canvas as HTMLCanvasElement & { __lastDragNdc?: { x: number; y: number }; __eyeAnchorNdcY?: number };
+      hooks.__lastDragNdc = target;
+      hooks.__eyeAnchorNdcY = anchorNdcY;
+      // Hit-testing is real work (matrix invert + a vertex-bbox scan); skip it
+      // whenever the pointer can't possibly be over the canvas — which is
+      // most mousemoves on a chat page (typing, scrolling, reading a reply).
+      const rect = canvas.getBoundingClientRect();
+      const insideCanvas = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+      if (!insideCanvas) {
+        clearHover(model);
+        return;
+      }
+      updateHover(model, ndc);
+    };
+
+    const onMouseLeaveDoc = () => {
+      const model = modelRef.current;
+      if (!model) return;
+      model.setDragging(0, 0);
+      (canvas as HTMLCanvasElement & { __lastDragNdc?: { x: number; y: number } }).__lastDragNdc = { x: 0, y: 0 };
+      clearHover(model);
+    };
+
+    const onCanvasDown = (e: MouseEvent) => {
+      pointerDownRef.current = { x: e.screenX, y: e.screenY, t: performance.now() };
+    };
+
+    // §20.14.5: tap-vs-drag classification uses screenX/screenY, not
+    // clientX/clientY — on the overlay, dragging moves the window under the
+    // cursor, so client coordinates barely change during a real drag.
+    const onWindowUp = (e: MouseEvent) => {
+      const down = pointerDownRef.current;
+      pointerDownRef.current = null;
+      if (!down) return;
+      if (!isTap(e.screenX - down.x, e.screenY - down.y, performance.now() - down.t)) return;
+      if (!canReactToTouch(aiStateRef.current)) return;
+
+      const model = modelRef.current;
+      const mvp = lastMvpRef.current;
+      if (!model || !mvp || model._state !== LoadStep.CompleteSetup) return;
+      const now = performance.now();
+      if (!canTap(lastReactionAtRef.current, now)) return; // dropped, not queued
+
+      const modelPoint = invertMvpPoint(mvp, ndcFromEvent(e));
+      if (model.hitTest(LAppDefine.HitAreaNameHead, modelPoint.x, modelPoint.y)) {
+        lastReactionAtRef.current = now;
+        model.setRandomExpression();
+        return;
+      }
+      if (model.hitTest(LAppDefine.HitAreaNameBody, modelPoint.x, modelPoint.y)) {
+        lastReactionAtRef.current = now;
+        model.startRandomMotion(LAppDefine.MotionGroupTapBody, LAppDefine.PriorityForce);
+      }
+      // neither area hit: silent no-op (§20.14.6) — a model with no HitAreas
+      // declared at all just never reaches past the two hitTest calls above.
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseleave", onMouseLeaveDoc);
+    canvas.addEventListener("mousedown", onCanvasDown);
+    window.addEventListener("mouseup", onWindowUp);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseleave", onMouseLeaveDoc);
+      canvas.removeEventListener("mousedown", onCanvasDown);
+      window.removeEventListener("mouseup", onWindowUp);
+    };
+  }, [enabled]);
 
   if (!enabled) return null;
 
